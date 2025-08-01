@@ -1,0 +1,16 @@
+{
+  "name": "my-website",
+  "version": "1.0.0",
+  "description": "A simple website project",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "live-server public",
+    "build": "echo 'Build step not defined'"
+  },
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "live-server": "^1.2.1"
+  }
+}
