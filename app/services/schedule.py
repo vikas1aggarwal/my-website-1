@@ -6,8 +6,8 @@ from typing import Dict, Iterable, List, Tuple
 
 from sqlmodel import select
 
-from app.db import get_session
-from app.models import Project, Task, TaskDependency, TaskSchedule, ProjectSchedule
+from db import get_session
+from models import Project, Task, TaskDependency, TaskSchedule, ProjectSchedule
 
 
 class CycleError(Exception):
