@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 
 class Project(SQLModel, table=True):
@@ -16,7 +16,7 @@ class Project(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
     # Note: target is declared via annotation; Relationship() has no string argument
-    tasks: list["Task"] = Relationship(back_populates="project")
+    # tasks: list["Task"] = Relationship(back_populates="project")
 
 
 class Task(SQLModel, table=True):
@@ -34,7 +34,7 @@ class Task(SQLModel, table=True):
 
     notes: Optional[str] = None
 
-    project: Optional["Project"] = Relationship(back_populates="tasks")
+    # project: Optional["Project"] = Relationship(back_populates="tasks")
 
 
 class TaskDependency(SQLModel, table=True):

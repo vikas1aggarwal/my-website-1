@@ -1,4 +1,6 @@
 from __future__ import annotations
+from dotenv import load_dotenv
+load_dotenv()
 
 import pandas as pd
 import plotly.express as px
@@ -25,7 +27,7 @@ with st.sidebar:
         projects = list(session.exec(select(Project)))
     project_names = [f"{p.id} - {p.name}" for p in projects]
 
-    selected_project_label = st.selectbox("Select project", ["<Create new>"] + project_names)
+    selected_project_label = st.selectbox("Select project", ["<Create new>"] + project_names, key="project_select")
 
     if selected_project_label == "<Create new>":
         with st.form("create_project"):
@@ -38,6 +40,11 @@ with st.sidebar:
             with get_session() as session:
                 p = Project(name=name, description=description, start_date=start_date, budget=budget)
                 session.add(p)
+                session.flush()         # get ID without waiting for context exit
+                session.refresh(p)      # ensure 'p.id' is populated
+                new_label = f"{p.id} - {p.name}"
+            st.session_state["project_select"] = new_label
+            st.success("Project created")
             st.rerun()
         current_project_id = None
     else:

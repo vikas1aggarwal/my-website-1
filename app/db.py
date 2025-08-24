@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Iterator
 import os
 
-from sqlmodel import Field, Relationship, SQLModel, Session, create_engine 
+from sqlmodel import Field, SQLModel, Session, create_engine 
 
 # Resolve a writable DB path inside the project
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,7 +26,7 @@ def init_db() -> None:
 
 @contextmanager
 def get_session() -> Iterator[Session]:
-    session = Session(_engine)
+    session = Session(_engine, expire_on_commit=False)  
     try:
         yield session
         session.commit()
