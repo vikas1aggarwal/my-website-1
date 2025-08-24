@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -15,6 +15,7 @@ class Project(SQLModel, table=True):
     budget: float = 0.0
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
+    # Note: target is declared via annotation; Relationship() has no string argument
     tasks: list["Task"] = Relationship(back_populates="project")
 
 
@@ -33,7 +34,7 @@ class Task(SQLModel, table=True):
 
     notes: Optional[str] = None
 
-    project: Optional[Project] = Relationship(back_populates="tasks")
+    project: Optional["Project"] = Relationship(back_populates="tasks")
 
 
 class TaskDependency(SQLModel, table=True):
