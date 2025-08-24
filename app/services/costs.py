@@ -5,8 +5,8 @@ from typing import Dict
 
 from sqlmodel import select
 
-from app.db import get_session
-from app.models import Project, Task
+from db import get_session
+from models import Project, Task
 
 
 @dataclass
