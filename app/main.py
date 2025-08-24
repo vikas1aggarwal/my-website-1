@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dotenv import load_dotenv
-load_dotenv()
 
 import pandas as pd
 import plotly.express as px
@@ -8,11 +7,11 @@ import streamlit as st
 from datetime import date
 from sqlmodel import select
 
-from app.db import init_db, get_session
-from app.models import Project, Task, TaskDependency
-from app.services.schedule import compute_cpm
-from app.services.costs import get_project_costs
-from app.services.alerts import get_alerts
+from db import init_db, get_session
+from models import Project, Task, TaskDependency
+from services.schedule import compute_cpm
+from services.costs import get_project_costs
+from services.alerts import get_alerts
 
 
 st.set_page_config(page_title="Project Planner", layout="wide")
