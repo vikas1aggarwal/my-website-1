@@ -20,38 +20,54 @@ init_db()
 st.title("Real Estate Project Planning")
 
 # Sidebar: Project selector and creator
+
 with st.sidebar:
     st.header("Projects")
+
+    # Load options
     with get_session() as session:
         projects = list(session.exec(select(Project)))
-    project_names = [f"{p.id} - {p.name}" for p in projects]
+    labels = [f"{p.id} - {p.name}" for p in projects]
+    options = ["<Create new>"] + labels
 
-    selected_project_label = st.selectbox("Select project", ["<Create new>"] + project_names, key="project_select")
+    # Create form first
+    with st.form("create_project"):
+        name = st.text_input("Project name")
+        description = st.text_area("Description", height=80)
+        start_date = st.date_input("Start date", value=date.today())
+        budget = st.number_input("Budget", min_value=0.0, step=1000.0, value=0.0)
+        submitted = st.form_submit_button("Create")
 
-    if selected_project_label == "<Create new>":
-        with st.form("create_project"):
-            name = st.text_input("Project name")
-            description = st.text_area("Description", height=80)
-            start_date = st.date_input("Start date", value=date.today())
-            budget = st.number_input("Budget", min_value=0.0, step=1000.0, value=0.0)
-            submitted = st.form_submit_button("Create")
-        if submitted and name:
-            with get_session() as session:
-                p = Project(name=name, description=description, start_date=start_date, budget=budget)
-                session.add(p)
-                session.flush()         # get ID without waiting for context exit
-                session.refresh(p)      # ensure 'p.id' is populated
-                new_label = f"{p.id} - {p.name}"
-            st.session_state["project_select"] = new_label
-            st.success("Project created")
-            st.rerun()
-        current_project_id = None
-    else:
-        current_project_id = int(selected_project_label.split(" - ", 1)[0])
+    if submitted and name:
+        with get_session() as session:
+            p = Project(name=name, description=description, start_date=start_date, budget=budget)
+            session.add(p)
+            session.flush()
+            session.refresh(p)
+        # Set a pending target label and rerun
+        st.session_state["_pending_select_label"] = f"{p.id} - {p.name}"
+        st.rerun()
 
-if not current_project_id:
-    st.info("Create or select a project to begin.")
-    st.stop()
+    # Decide default selection BEFORE rendering the selectbox
+    pending = st.session_state.pop("_pending_select_label", None)
+    default_label = pending if (pending and pending in options) else st.session_state.get("project_select", options[0])
+    if default_label not in options:
+        default_label = options[0]
+    default_index = options.index(default_label)
+
+    # Render selectbox; key persists selection across reruns
+    selected_project_label = st.selectbox(
+        "Select project",
+        options,
+        index=default_index,
+        key="project_select"
+    )
+
+current_project_id = None 
+if selected_project_label == "<Create new>":
+    current_project_id = None
+else:
+    current_project_id = int(selected_project_label.split(" - ", 1)[0])
 
 # Load current project data
 with get_session() as session:
