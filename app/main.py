@@ -22,15 +22,7 @@ st.title("Real Estate Project Planning")
 # Sidebar: Project selector and creator
 
 with st.sidebar:
-    st.header("Projects")
-
-    # Load options
-    with get_session() as session:
-        projects = list(session.exec(select(Project)))
-    labels = [f"{p.id} - {p.name}" for p in projects]
-    options = ["<Create new>"] + labels
-
-    # Create form first
+    # Create form first (ensure the create box appears at the very top)
     with st.form("create_project"):
         name = st.text_input("Project name")
         description = st.text_area("Description", height=80)
@@ -47,6 +39,14 @@ with st.sidebar:
         # Set a pending target label and rerun
         st.session_state["_pending_select_label"] = f"{p.id} - {p.name}"
         st.rerun()
+
+    st.header("Projects")
+
+    # Load options
+    with get_session() as session:
+        projects = list(session.exec(select(Project)))
+    labels = [f"{p.id} - {p.name}" for p in projects]
+    options = ["<Create new>"] + labels
 
     # Decide default selection BEFORE rendering the selectbox
     pending = st.session_state.pop("_pending_select_label", None)
