@@ -22,13 +22,15 @@ st.title("Real Estate Project Planning")
 # Sidebar: Project selector and creator
 
 with st.sidebar:
+    st.header("Projects")
+    
     # Create form first (ensure the create box appears at the very top)
     with st.form("create_project"):
-        submitted = st.form_submit_button("Create")
         name = st.text_input("Project name")
         description = st.text_area("Description", height=80)
         start_date = st.date_input("Start date", value=date.today())
         budget = st.number_input("Budget", min_value=0.0, step=1000.0, value=0.0)
+        submitted = st.form_submit_button("Create")
 
     if submitted and name:
         with get_session() as session:
@@ -40,7 +42,6 @@ with st.sidebar:
         st.session_state["_pending_select_label"] = f"{p.id} - {p.name}"
         st.rerun()
 
-    st.header("Projects")
 
     # Load options
     with get_session() as session:
@@ -62,6 +63,36 @@ with st.sidebar:
         index=default_index,
         key="project_select"
     )
+
+    # Danger zone: Delete current project (and its tasks/dependencies)
+    if selected_project_label != "<Create new>":
+        st.markdown("---")
+        st.subheader("Danger zone")
+        st.caption("This will permanently delete the project, all its tasks, and dependencies.")
+        confirm_text = st.text_input("Type DELETE to confirm", key="delete_confirm")
+        if st.button("Delete project", type="primary", disabled=(confirm_text != "DELETE")):
+            try:
+                proj_id = int(selected_project_label.split(" - ", 1)[0])
+                with get_session() as session:
+                    # Delete dependencies for this project
+                    session.exec(select(TaskDependency).where(TaskDependency.project_id == proj_id)).all()
+                    for d in session.exec(select(TaskDependency).where(TaskDependency.project_id == proj_id)):
+                        session.delete(d)
+
+                    # Delete tasks for this project
+                    for t in session.exec(select(Task).where(Task.project_id == proj_id)):
+                        session.delete(t)
+
+                    # Delete the project itself
+                    proj = session.get(Project, proj_id)
+                    if proj:
+                        session.delete(proj)
+                # Reset selection (defer via pending label) and rerun
+                st.session_state["_pending_select_label"] = "<Create new>"
+                st.success("Project deleted")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
 
 current_project_id = None 
 if selected_project_label == "<Create new>":
