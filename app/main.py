@@ -24,11 +24,11 @@ st.title("Real Estate Project Planning")
 with st.sidebar:
     # Create form first (ensure the create box appears at the very top)
     with st.form("create_project"):
+        submitted = st.form_submit_button("Create")
         name = st.text_input("Project name")
         description = st.text_area("Description", height=80)
         start_date = st.date_input("Start date", value=date.today())
         budget = st.number_input("Budget", min_value=0.0, step=1000.0, value=0.0)
-        submitted = st.form_submit_button("Create")
 
     if submitted and name:
         with get_session() as session:
