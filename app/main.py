@@ -1,287 +1,507 @@
-from __future__ import annotations
-from dotenv import load_dotenv
+"""
+Real Estate Project Management System - FastAPI Backend
+Phase 1: Foundation with Security, Performance, and Best Practices
+"""
 
-import pandas as pd
-import plotly.express as px
-import streamlit as st
-from datetime import date
-from sqlmodel import select
+from contextlib import asynccontextmanager
+from typing import List, Optional
+import logging
+import time
+from datetime import datetime, timedelta
 
-from db import init_db, get_session
-from models import Project, Task, TaskDependency
-from services.schedule import compute_cpm
-from services.costs import get_project_costs
-from services.alerts import get_alerts
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+import uvicorn
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+import structlog
 
+from .database import get_db, init_db
+from .models import (
+    Project, Task, TaskDependency, Material, MaterialCategory,
+    PropertyType, ConstructionPhase, BuildingComponent, User, Role,
+    Team, TeamMember, CostEstimate, ProgressUpdate, ProgressMedia
+)
+from .schemas import (
+    ProjectCreate, ProjectUpdate, ProjectResponse,
+    TaskCreate, TaskUpdate, TaskResponse,
+    MaterialResponse, MaterialCategoryResponse,
+    UserCreate, UserLogin, UserResponse,
+    TokenResponse, CostEstimateCreate, CostEstimateResponse
+)
+from .auth import (
+    create_access_token, get_current_user, get_password_hash,
+    verify_password, ACCESS_TOKEN_EXPIRE_MINUTES
+)
+from .config import settings
 
-st.set_page_config(page_title="Project Planner", layout="wide")
-init_db()
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.JSONRenderer()
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
 
-st.title("Real Estate Project Planning")
+logger = structlog.get_logger()
 
-# Sidebar: Project selector and creator
+# Security middleware configuration
+SECURITY_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "1; mode=block",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+}
 
-with st.sidebar:
-    st.header("Projects")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    logger.info("Starting Real Estate Project Management System")
+    await init_db()
+    logger.info("Database initialized successfully")
     
-    # Create form first (ensure the create box appears at the very top)
-    with st.form("create_project"):
-        name = st.text_input("Project name")
-        description = st.text_area("Description", height=80)
-        start_date = st.date_input("Start date", value=date.today())
-        budget = st.number_input("Budget", min_value=0.0, step=1000.0, value=0.0)
-        submitted = st.form_submit_button("Create")
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Real Estate Project Management System")
 
-    if submitted and name:
-        with get_session() as session:
-            p = Project(name=name, description=description, start_date=start_date, budget=budget)
-            session.add(p)
-            session.flush()
-            session.refresh(p)
-        # Set a pending target label and rerun
-        st.session_state["_pending_select_label"] = f"{p.id} - {p.name}"
-        st.rerun()
+# Create FastAPI application
+app = FastAPI(
+    title="Real Estate Project Management System",
+    description="A comprehensive, AI-powered project management system for builders and architects",
+    version="1.0.0",
+    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
+    lifespan=lifespan
+)
 
+# Security middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
-    # Load options
-    with get_session() as session:
-        projects = list(session.exec(select(Project)))
-    labels = [f"{p.id} - {p.name}" for p in projects]
-    options = ["<Create new>"] + labels
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS
+)
 
-    # Decide default selection BEFORE rendering the selectbox
-    pending = st.session_state.pop("_pending_select_label", None)
-    default_label = pending if (pending and pending in options) else st.session_state.get("project_select", options[0])
-    if default_label not in options:
-        default_label = options[0]
-    default_index = options.index(default_label)
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers to all responses"""
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers[header] = value
+    return response
 
-    # Render selectbox; key persists selection across reruns
-    selected_project_label = st.selectbox(
-        "Select project",
-        options,
-        index=default_index,
-        key="project_select"
-    )
+# Performance monitoring middleware
+@app.middleware("http")
+async def performance_monitoring(request: Request, call_next):
+    """Monitor request performance"""
+    start_time = time.time()
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Calculate processing time
+    process_time = time.time() - start_time
+    
+    # Add performance header
+    response.headers["X-Process-Time"] = str(process_time)
+    
+    # Log slow requests
+    if process_time > 1.0:  # Log requests taking more than 1 second
+        logger.warning(
+            "Slow request detected",
+            path=request.url.path,
+            method=request.method,
+            process_time=process_time,
+            client_ip=request.client.host
+        )
+    
+    return response
 
-    # Danger zone: Delete current project (and its tasks/dependencies)
-    if selected_project_label != "<Create new>":
-        st.markdown("---")
-        st.subheader("Danger zone")
-        st.caption("This will permanently delete the project, all its tasks, and dependencies.")
-        confirm_text = st.text_input("Type DELETE to confirm", key="delete_confirm")
-        if st.button("Delete project", type="primary", disabled=(confirm_text != "DELETE")):
-            try:
-                proj_id = int(selected_project_label.split(" - ", 1)[0])
-                with get_session() as session:
-                    # Delete dependencies for this project
-                    session.exec(select(TaskDependency).where(TaskDependency.project_id == proj_id)).all()
-                    for d in session.exec(select(TaskDependency).where(TaskDependency.project_id == proj_id)):
-                        session.delete(d)
+# Rate limiting middleware
+from collections import defaultdict
+import asyncio
 
-                    # Delete tasks for this project
-                    for t in session.exec(select(Task).where(Task.project_id == proj_id)):
-                        session.delete(t)
+request_counts = defaultdict(lambda: {"count": 0, "reset_time": 0})
+RATE_LIMIT = 100  # requests per minute
+RATE_LIMIT_WINDOW = 60  # seconds
 
-                    # Delete the project itself
-                    proj = session.get(Project, proj_id)
-                    if proj:
-                        session.delete(proj)
-                # Reset selection (defer via pending label) and rerun
-                st.session_state["_pending_select_label"] = "<Create new>"
-                st.success("Project deleted")
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
+@app.middleware("http")
+async def rate_limiting(request: Request, call_next):
+    """Basic rate limiting middleware"""
+    client_ip = request.client.host
+    current_time = time.time()
+    
+    # Reset counter if window has passed
+    if current_time - request_counts[client_ip]["reset_time"] > RATE_LIMIT_WINDOW:
+        request_counts[client_ip] = {"count": 0, "reset_time": current_time}
+    
+    # Check rate limit
+    if request_counts[client_ip]["count"] >= RATE_LIMIT:
+        logger.warning("Rate limit exceeded", client_ip=client_ip)
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": "Rate limit exceeded. Please try again later."}
+        )
+    
+    # Increment counter
+    request_counts[client_ip]["count"] += 1
+    
+    # Process request
+    response = await call_next(request)
+    return response
 
-current_project_id = None 
-if selected_project_label == "<Create new>":
-    current_project_id = None
-else:
-    current_project_id = int(selected_project_label.split(" - ", 1)[0])
+# Health check endpoint
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint for monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "environment": settings.ENVIRONMENT
+    }
 
-# Load current project data
-with get_session() as session:
-    project = session.get(Project, current_project_id)
-    tasks = list(session.exec(select(Task).where(Task.project_id == current_project_id)))
-    deps = list(session.exec(select(TaskDependency).where(TaskDependency.project_id == current_project_id)))
-
-# Tabs for CRUD and views
-tab_tasks, tab_deps, tab_schedule, tab_costs, tab_alerts = st.tabs([
-    "Tasks", "Dependencies", "Schedule", "Costs", "Alerts"
-])
-
-with tab_tasks:
-    st.subheader("Tasks")
-
-    # Task creation form
-    with st.form("create_task"):
-        c1, c2, c3, c4 = st.columns(4)
-        name = c1.text_input("Name")
-        duration = c2.number_input("Duration (days)", min_value=1, step=1, value=5)
-        cost_planned = c3.number_input("Planned Cost", min_value=0.0, step=1000.0)
-        cost_actual = c4.number_input("Actual Cost", min_value=0.0, step=1000.0)
-        c5, c6 = st.columns(2)
-        percent_complete = c5.slider("% Complete", 0.0, 100.0, 0.0, 1.0)
-        notes = c6.text_input("Notes")
-        submitted = st.form_submit_button("Add Task")
-    if submitted and name:
-        with get_session() as session:
-            t = Task(
-                project_id=current_project_id,
-                name=name,
-                duration_days=int(duration),
-                cost_planned=float(cost_planned),
-                cost_actual=float(cost_actual),
-                percent_complete=float(percent_complete),
-                notes=notes or None,
-            )
-            session.add(t)
-        st.rerun()
-
-    # Existing tasks table with inline edits
-    if tasks:
-        df = pd.DataFrame([
-            {
-                "id": t.id,
-                "name": t.name,
-                "duration_days": t.duration_days,
-                "planned_start_date": t.planned_start_date,
-                "planned_finish_date": t.planned_finish_date,
-                "cost_planned": t.cost_planned,
-                "cost_actual": t.cost_actual,
-                "percent_complete": t.percent_complete,
-                "notes": t.notes,
-            }
-            for t in tasks
-        ])
-        st.dataframe(df, use_container_width=True, height=250)
-
-        with st.expander("Edit or delete a task"):
-            task_ids = [t.id for t in tasks]
-            edit_id = st.selectbox("Task", task_ids)
-            t = next(t for t in tasks if t.id == edit_id)
-            col1, col2, col3 = st.columns(3)
-            name = col1.text_input("Name", value=t.name)
-            duration_days = col2.number_input("Duration (days)", min_value=1, step=1, value=int(t.duration_days))
-            percent = col3.slider("% Complete", 0.0, 100.0, float(t.percent_complete), 1.0)
-            col4, col5 = st.columns(2)
-            cost_planned = col4.number_input("Planned Cost", min_value=0.0, step=1000.0, value=float(t.cost_planned))
-            cost_actual = col5.number_input("Actual Cost", min_value=0.0, step=1000.0, value=float(t.cost_actual))
-            notes = st.text_input("Notes", value=t.notes or "")
-            c1, c2 = st.columns(2)
-            if c1.button("Save changes"):
-                with get_session() as session:
-                    ut = session.get(Task, edit_id)
-                    ut.name = name
-                    ut.duration_days = int(duration_days)
-                    ut.percent_complete = float(percent)
-                    ut.cost_planned = float(cost_planned)
-                    ut.cost_actual = float(cost_actual)
-                    ut.notes = notes or None
-                st.success("Saved")
-                st.rerun()
-            if c2.button("Delete task"):
-                with get_session() as session:
-                    dt = session.get(Task, edit_id)
-                    session.delete(dt)
-                st.warning("Deleted")
-                st.rerun()
-    else:
-        st.info("No tasks yet. Add the first task above.")
-
-with tab_deps:
-    st.subheader("Dependencies")
-    if not tasks:
-        st.info("Add tasks first to create dependencies.")
-    else:
-        task_options = {f"{t.id}: {t.name}": t.id for t in tasks}
-        with st.form("add_dep"):
-            c1, c2 = st.columns(2)
-            pred_label = c1.selectbox("Predecessor", list(task_options.keys()))
-            succ_label = c2.selectbox("Successor", list(task_options.keys()))
-            submitted = st.form_submit_button("Add Dependency")
-        if submitted:
-            pred_id = task_options[pred_label]
-            succ_id = task_options[succ_label]
-            if pred_id == succ_id:
-                st.error("A task cannot depend on itself.")
-            else:
-                with get_session() as session:
-                    session.add(TaskDependency(project_id=current_project_id, predecessor_id=pred_id, successor_id=succ_id))
-                st.rerun()
-
-        if deps:
-            df_deps = pd.DataFrame([
-                {"id": d.id, "predecessor_id": d.predecessor_id, "successor_id": d.successor_id}
-                for d in deps
-            ])
-            st.dataframe(df_deps, use_container_width=True, height=200)
-
-            del_id = st.selectbox("Delete dependency", [None] + [d.id for d in deps])
-            if del_id and st.button("Delete selected"):
-                with get_session() as session:
-                    dd = session.get(TaskDependency, del_id)
-                    session.delete(dd)
-                st.rerun()
-        else:
-            st.info("No dependencies added yet.")
-
-with tab_schedule:
-    st.subheader("Schedule & Critical Path")
-    if st.button("Compute Schedule (CPM)"):
-        try:
-            project_schedule, sched_map = compute_cpm(current_project_id)
-            st.success(f"Finish date: {project_schedule.finish_date}")
-        except Exception as e:
-            st.error(str(e))
-            sched_map = None
-            project_schedule = None
-        if sched_map:
-            df_sched = pd.DataFrame([
-                {
-                    "task_id": s.task_id,
-                    "early_start": s.early_start,
-                    "early_finish": s.early_finish,
-                    "late_start": s.late_start,
-                    "late_finish": s.late_finish,
-                    "total_float_days": s.total_float_days,
-                    "is_critical": s.is_critical,
-                }
-                for s in sched_map.values()
-            ])
-            st.dataframe(df_sched, use_container_width=True, height=280)
-
-            # Simple Gantt
-            gantt_df = df_sched.merge(
-                pd.DataFrame([{ "id": t.id, "name": t.name } for t in tasks]),
-                left_on="task_id", right_on="id", how="left"
-            )
-            gantt_df["Start"] = gantt_df["early_start"]
-            gantt_df["Finish"] = gantt_df["early_finish"]
-            fig = px.timeline(gantt_df, x_start="Start", x_end="Finish", y="name", color="is_critical", title="Timeline")
-            fig.update_yaxes(autorange="reversed")
-            st.plotly_chart(fig, use_container_width=True)
-
-with tab_costs:
-    st.subheader("Costs")
+# Authentication endpoints
+@app.post("/auth/register", response_model=UserResponse, tags=["Authentication"])
+async def register_user(
+    user_data: UserCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Register a new user"""
     try:
-        summary = get_project_costs(current_project_id)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Planned", f"${summary.planned_cost:,.0f}")
-        c2.metric("Actual", f"${summary.actual_cost:,.0f}")
-        c3.metric("Variance", f"${summary.variance:,.0f}", delta=f"{summary.variance:,.0f}")
-        c4.metric("CPI", f"{summary.cpi:.2f}")
+        # Check if user already exists
+        existing_user = await db.execute(
+            select(User).where(User.email == user_data.email)
+        )
+        if existing_user.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Create new user
+        hashed_password = get_password_hash(user_data.password)
+        db_user = User(
+            username=user_data.username,
+            email=user_data.email,
+            full_name=user_data.full_name,
+            role_id=user_data.role_id,
+            hashed_password=hashed_password
+        )
+        
+        db.add(db_user)
+        await db.commit()
+        await db.refresh(db_user)
+        
+        logger.info("New user registered", user_id=db_user.id, email=user_data.email)
+        
+        return UserResponse(
+            id=db_user.id,
+            username=db_user.username,
+            email=db_user.email,
+            full_name=db_user.full_name,
+            role_id=db_user.role_id,
+            is_active=db_user.is_active
+        )
+        
     except Exception as e:
-        st.error(str(e))
+        logger.error("User registration failed", error=str(e))
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed"
+        )
 
-with tab_alerts:
-    st.subheader("Alerts")
-    alerts = get_alerts(current_project_id)
-    for a in alerts:
-        if a.level == "CRITICAL":
-            st.error(a.message)
-        elif a.level == "WARNING":
-            st.warning(a.message)
-        else:
-            st.info(a.message)
+@app.post("/auth/login", response_model=TokenResponse, tags=["Authentication"])
+async def login_user(
+    user_credentials: UserLogin,
+    db: AsyncSession = Depends(get_db)
+):
+    """Authenticate user and return access token"""
+    try:
+        # Find user by email
+        user = await db.execute(
+            select(User).where(User.email == user_credentials.email)
+        )
+        user = user.scalar_one_or_none()
+        
+        if not user or not verify_password(user_credentials.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password"
+            )
+        
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is deactivated"
+            )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        # Update last login
+        user.last_login = datetime.utcnow()
+        await db.commit()
+        
+        logger.info("User logged in successfully", user_id=user.id, email=user.email)
+        
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Login failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Login failed"
+        )
+
+# Project endpoints
+@app.get("/projects", response_model=List[ProjectResponse], tags=["Projects"])
+async def get_projects(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all projects (with pagination)"""
+    try:
+        query = select(Project).offset(skip).limit(limit)
+        result = await db.execute(query)
+        projects = result.scalars().all()
+        
+        return [ProjectResponse.from_orm(project) for project in projects]
+        
+    except Exception as e:
+        logger.error("Failed to fetch projects", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch projects"
+        )
+
+@app.post("/projects", response_model=ProjectResponse, tags=["Projects"])
+async def create_project(
+    project_data: ProjectCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new project"""
+    try:
+        db_project = Project(
+            **project_data.dict(),
+            builder_id=current_user.id
+        )
+        
+        db.add(db_project)
+        await db.commit()
+        await db.refresh(db_project)
+        
+        logger.info("Project created", project_id=db_project.id, created_by=current_user.id)
+        
+        return ProjectResponse.from_orm(db_project)
+        
+    except Exception as e:
+        logger.error("Project creation failed", error=str(e))
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create project"
+        )
+
+@app.get("/projects/{project_id}", response_model=ProjectResponse, tags=["Projects"])
+async def get_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific project by ID"""
+    try:
+        project = await db.execute(
+            select(Project).where(Project.id == project_id)
+        )
+        project = project.scalar_one_or_none()
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        return ProjectResponse.from_orm(project)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to fetch project", project_id=project_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch project"
+        )
+
+# Material endpoints
+@app.get("/materials", response_model=List[MaterialResponse], tags=["Materials"])
+async def get_materials(
+    category_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all materials with optional category filtering"""
+    try:
+        query = select(Material).where(Material.is_active == True)
+        
+        if category_id:
+            query = query.where(Material.category_id == category_id)
+        
+        query = query.offset(skip).limit(limit)
+        result = await db.execute(query)
+        materials = result.scalars().all()
+        
+        return [MaterialResponse.from_orm(material) for material in materials]
+        
+    except Exception as e:
+        logger.error("Failed to fetch materials", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch materials"
+        )
+
+@app.get("/materials/categories", response_model=List[MaterialCategoryResponse], tags=["Materials"])
+async def get_material_categories(
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all material categories"""
+    try:
+        result = await db.execute(select(MaterialCategory))
+        categories = result.scalars().all()
+        
+        return [MaterialCategoryResponse.from_orm(category) for category in categories]
+        
+    except Exception as e:
+        logger.error("Failed to fetch material categories", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch material categories"
+        )
+
+# Cost estimation endpoints
+@app.post("/cost-estimates", response_model=CostEstimateResponse, tags=["Cost Estimation"])
+async def create_cost_estimate(
+    estimate_data: CostEstimateCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new cost estimate"""
+    try:
+        db_estimate = CostEstimate(
+            **estimate_data.dict(),
+            created_by=current_user.id
+        )
+        
+        db.add(db_estimate)
+        await db.commit()
+        await db.refresh(db_estimate)
+        
+        logger.info("Cost estimate created", estimate_id=db_estimate.id, created_by=current_user.id)
+        
+        return CostEstimateResponse.from_orm(db_estimate)
+        
+    except Exception as e:
+        logger.error("Cost estimate creation failed", error=str(e))
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create cost estimate"
+        )
+
+# Analytics endpoints
+@app.get("/analytics/project-costs/{project_id}", tags=["Analytics"])
+async def get_project_cost_analysis(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get cost analysis for a specific project"""
+    try:
+        # Get total planned cost
+        planned_cost_result = await db.execute(
+            select(func.sum(CostEstimate.total_cost))
+            .where(CostEstimate.task_id.in_(
+                select(Task.id).where(Task.project_id == project_id)
+            ))
+            .where(CostEstimate.estimate_type == "planned")
+        )
+        total_planned = planned_cost_result.scalar() or 0
+        
+        # Get cost by phase
+        phase_costs_result = await db.execute(
+            select(
+                ConstructionPhase.name,
+                func.sum(CostEstimate.total_cost).label("total_cost")
+            )
+            .join(Task, Task.phase_id == ConstructionPhase.id)
+            .join(CostEstimate, CostEstimate.task_id == Task.id)
+            .where(Task.project_id == project_id)
+            .where(CostEstimate.estimate_type == "planned")
+            .group_by(ConstructionPhase.id, ConstructionPhase.name)
+        )
+        phase_costs = phase_costs_result.all()
+        
+        return {
+            "project_id": project_id,
+            "total_planned_cost": float(total_planned),
+            "cost_by_phase": [
+                {"phase": phase, "cost": float(cost)} 
+                for phase, cost in phase_costs
+            ]
+        }
+        
+    except Exception as e:
+        logger.error("Failed to fetch project cost analysis", project_id=project_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch cost analysis"
+        )
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    )
