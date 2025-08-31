@@ -1,0 +1,27 @@
+# FastAPI and ASGI server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database and ORM
+sqlalchemy
+aiosqlite
+
+# Authentication and Security
+python-jose[cryptography]
+passlib[bcrypt]
+cryptography
+
+# Data Processing
+pydantic
+pydantic-settings
+
+# HTTP and API
+httpx
+aiofiles
+
+# Logging and Monitoring
+structlog
+
+# Environment and Configuration
+python-dotenv

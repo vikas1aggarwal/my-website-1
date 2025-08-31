@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real Estate API Test - Full CRUD</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        h2 {
+            color: #666;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover { background-color: #218838; }
+        .btn-warning { background-color: #ffc107; color: #212529; }
+        .btn-warning:hover { background-color: #e0a800; }
+        .btn-danger { background-color: #dc3545; }
+        .btn-danger:hover { background-color: #c82333; }
+        .result {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status-planning { background-color: #ffc107; color: #212529; }
+        .status-in_progress { background-color: #007bff; color: white; }
+        .status-completed { background-color: #28a745; color: white; }
+        .status-on_hold { background-color: #6c757d; color: white; }
+        .status-cancelled { background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <h1>🏗️ Real Estate Project Management System - Full CRUD API Test</h1>
+    
+    <div class="container">
+        <h2>🔍 Health Check</h2>
+        <button onclick="testHealth()">Test Health</button>
+        <div id="healthResult" class="result"></div>
+    </div>
+
+    <div class="grid">
+        <div class="container">
+            <h2>📋 Projects Management</h2>
+            
+            <h3>📖 Read Operations</h3>
+            <button onclick="getProjects()">Get All Projects</button>
+            <div class="form-group">
+                <label for="projectId">Project ID:</label>
+                <input type="number" id="projectId" value="1">
+                <button onclick="getProject()">Get Project</button>
+            </div>
+            <div id="projectsResult" class="result"></div>
+            
+            <h3>➕ Create Project</h3>
+            <div class="form-group">
+                <label for="projectName">Project Name:</label>
+                <input type="text" id="projectName" value="New Test Project">
+            </div>
+            <div class="form-group">
+                <label for="projectDescription">Description:</label>
+                <textarea id="projectDescription" rows="3">A new test project created via API</textarea>
+            </div>
+            <div class="form-group">
+                <label for="projectBudget">Budget:</label>
+                <input type="number" id="projectBudget" value="2000000">
+            </div>
+            <button onclick="createProject()" class="btn-success">Create Project</button>
+            <div id="createProjectResult" class="result"></div>
+            
+            <h3>✏️ Update Project</h3>
+            <div class="form-group">
+                <label for="updateProjectId">Project ID:</label>
+                <input type="number" id="updateProjectId" value="1">
+            </div>
+            <div class="form-group">
+                <label for="updateProjectName">New Name:</label>
+                <input type="text" id="updateProjectName" value="Updated Project Name">
+            </div>
+            <div class="form-group">
+                <label for="updateProjectStatus">Status:</label>
+                <select id="updateProjectStatus">
+                    <option value="planning">Planning</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="on_hold">On Hold</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <button onclick="updateProject()" class="btn-warning">Update Project</button>
+            <div id="updateProjectResult" class="result"></div>
+            
+            <h3>🗑️ Delete Project</h3>
+            <div class="form-group">
+                <label for="deleteProjectId">Project ID:</label>
+                <input type="number" id="deleteProjectId" value="1">
+            </div>
+            <button onclick="deleteProject()" class="btn-danger">Delete Project</button>
+            <div id="deleteProjectResult" class="result"></div>
+        </div>
+
+        <div class="container">
+            <h2>🏗️ Materials Management</h2>
+            
+            <h3>📖 Read Operations</h3>
+            <button onclick="getMaterials()">Get All Materials</button>
+            <div class="form-group">
+                <label for="materialId">Material ID:</label>
+                <input type="number" id="materialId" value="1">
+                <button onclick="getMaterial()">Get Material</button>
+            </div>
+            <div id="materialsResult" class="result"></div>
+            
+            <h3>➕ Create Material</h3>
+            <div class="form-group">
+                <label for="materialName">Material Name:</label>
+                <input type="text" id="materialName" value="New Test Material">
+            </div>
+            <div class="form-group">
+                <label for="materialCategoryId">Category ID:</label>
+                <input type="number" id="materialCategoryId" value="1">
+            </div>
+            <div class="form-group">
+                <label for="materialUnit">Unit:</label>
+                <input type="text" id="materialUnit" value="kg">
+            </div>
+            <div class="form-group">
+                <label for="materialCost">Base Cost per Unit:</label>
+                <input type="number" id="materialCost" value="50.00" step="0.01">
+            </div>
+            <button onclick="createMaterial()" class="btn-success">Create Material</button>
+            <div id="createMaterialResult" class="result"></div>
+            
+            <h3>✏️ Update Material</h3>
+            <div class="form-group">
+                <label for="updateMaterialId">Material ID:</label>
+                <input type="number" id="updateMaterialId" value="1">
+            </div>
+            <div class="form-group">
+                <label for="updateMaterialName">New Name:</label>
+                <input type="text" id="updateMaterialName" value="Updated Material Name">
+            </div>
+            <div class="form-group">
+                <label for="updateMaterialCost">New Cost:</label>
+                <input type="number" id="updateMaterialCost" value="75.00" step="0.01">
+            </div>
+            <button onclick="updateMaterial()" class="btn-warning">Update Material</button>
+            <div id="updateMaterialResult" class="result"></div>
+            
+            <h3>🗑️ Delete Material</h3>
+            <div class="form-group">
+                <label for="deleteMaterialId">Material ID:</label>
+                <input type="number" id="deleteMaterialId" value="1">
+            </div>
+            <button onclick="deleteMaterial()" class="btn-danger">Delete Material</button>
+            <div id="deleteMaterialResult" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>👤 User Management</h2>
+        
+        <h3>📝 User Registration</h3>
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" value="testuser">
+        </div>
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" value="test@example.com">
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" value="test123">
+        </div>
+        <div class="form-group">
+            <label for="fullName">Full Name:</label>
+            <input type="text" id="fullName" value="Test User">
+        </div>
+        <button onclick="registerUser()" class="btn-success">Register User</button>
+        <div id="registerResult" class="result"></div>
+        
+        <h3>🔑 User Login</h3>
+        <div class="form-group">
+            <label for="loginEmail">Email:</label>
+            <input type="email" id="loginEmail" value="test@example.com">
+        </div>
+        <div class="form-group">
+            <label for="loginPassword">Password:</label>
+            <input type="password" id="loginPassword" value="test123">
+        </div>
+        <button onclick="loginUser()" class="btn-success">Login</button>
+        <div id="loginResult" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.className = `result ${isError ? 'error' : 'success'}`;
+            element.textContent = JSON.stringify(data, null, 2);
+        }
+
+        function showError(elementId, error) {
+            const element = document.getElementById(elementId);
+            element.className = 'result error';
+            element.textContent = `Error: ${error.message || error}`;
+        }
+
+        // Health Check
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('healthResult', data);
+            } catch (error) {
+                showError('healthResult', error);
+            }
+        }
+
+        // Project Operations
+        async function getProjects() {
+            try {
+                const response = await fetch(`${API_BASE}/projects`);
+                const data = await response.json();
+                showResult('projectsResult', data);
+            } catch (error) {
+                showError('projectsResult', error);
+            }
+        }
+
+        async function getProject() {
+            try {
+                const projectId = document.getElementById('projectId').value;
+                const response = await fetch(`${API_BASE}/projects/${projectId}`);
+                const data = await response.json();
+                showResult('projectsResult', data);
+            } catch (error) {
+                showError('projectsResult', error);
+            }
+        }
+
+        async function createProject() {
+            try {
+                const projectData = {
+                    name: document.getElementById('projectName').value,
+                    description: document.getElementById('projectDescription').value,
+                    budget: parseFloat(document.getElementById('projectBudget').value)
+                };
+
+                const response = await fetch(`${API_BASE}/projects`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(projectData)
+                });
+
+                const data = await response.json();
+                showResult('createProjectResult', data, !response.ok);
+            } catch (error) {
+                showError('createProjectResult', error);
+            }
+        }
+
+        async function updateProject() {
+            try {
+                const projectId = document.getElementById('updateProjectId').value;
+                const updateData = {
+                    name: document.getElementById('updateProjectName').value,
+                    status: document.getElementById('updateProjectStatus').value
+                };
+
+                const response = await fetch(`${API_BASE}/projects/${projectId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updateData)
+                });
+
+                const data = await response.json();
+                showResult('updateProjectResult', data, !response.ok);
+            } catch (error) {
+                showError('updateProjectResult', error);
+            }
+        }
+
+        async function deleteProject() {
+            try {
+                const projectId = document.getElementById('deleteProjectId').value;
+                const response = await fetch(`${API_BASE}/projects/${projectId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                showResult('deleteProjectResult', data, !response.ok);
+            } catch (error) {
+                showError('deleteProjectResult', error);
+            }
+        }
+
+        // Material Operations
+        async function getMaterials() {
+            try {
+                const response = await fetch(`${API_BASE}/materials`);
+                const data = await response.json();
+                showResult('materialsResult', data);
+            } catch (error) {
+                showError('materialsResult', error);
+            }
+        }
+
+        async function getMaterial() {
+            try {
+                const materialId = document.getElementById('materialId').value;
+                const response = await fetch(`${API_BASE}/materials/${materialId}`);
+                const data = await response.json();
+                showResult('materialsResult', data);
+            } catch (error) {
+                showError('materialsResult', error);
+            }
+        }
+
+        async function createMaterial() {
+            try {
+                const materialData = {
+                    name: document.getElementById('materialName').value,
+                    category_id: parseInt(document.getElementById('materialCategoryId').value),
+                    unit: document.getElementById('materialUnit').value,
+                    base_cost_per_unit: parseFloat(document.getElementById('materialCost').value),
+                    properties: {}
+                };
+
+                const response = await fetch(`${API_BASE}/materials`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(materialData)
+                });
+
+                const data = await response.json();
+                showResult('createMaterialResult', data, !response.ok);
+            } catch (error) {
+                showError('createMaterialResult', error);
+            }
+        }
+
+        async function updateMaterial() {
+            try {
+                const materialId = document.getElementById('updateMaterialId').value;
+                const updateData = {
+                    name: document.getElementById('updateMaterialName').value,
+                    base_cost_per_unit: parseFloat(document.getElementById('updateMaterialCost').value)
+                };
+
+                const response = await fetch(`${API_BASE}/materials/${materialId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updateData)
+                });
+
+                const data = await response.json();
+                showResult('updateMaterialResult', data, !response.ok);
+            } catch (error) {
+                showError('updateMaterialResult', error);
+            }
+        }
+
+        async function deleteMaterial() {
+            try {
+                const materialId = document.getElementById('deleteMaterialId').value;
+                const response = await fetch(`${API_BASE}/materials/${materialId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                showResult('deleteMaterialResult', data, !response.ok);
+            } catch (error) {
+                showError('deleteMaterialResult', error);
+            }
+        }
+
+        // User Operations
+        async function registerUser() {
+            try {
+                const userData = {
+                    username: document.getElementById('username').value,
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value,
+                    full_name: document.getElementById('fullName').value
+                };
+
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(userData)
+                });
+
+                const data = await response.json();
+                showResult('registerResult', data, !response.ok);
+            } catch (error) {
+                showError('registerResult', error);
+            }
+        }
+
+        async function loginUser() {
+            try {
+                const loginData = {
+                    email: document.getElementById('loginEmail').value,
+                    password: document.getElementById('loginPassword').value
+                };
+
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(loginData)
+                });
+
+                const data = await response.json();
+                showResult('loginResult', data, !response.ok);
+            } catch (error) {
+                showError('loginResult', error);
+            }
+        }
+
+        // Auto-test on page load
+        window.onload = function() {
+            testHealth();
+        };
+    </script>
+</body>
+</html>
