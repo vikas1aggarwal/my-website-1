@@ -8,7 +8,7 @@ import json
 import sqlite3
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, status, Request
@@ -770,6 +770,307 @@ async def get_material_categories():
     except Exception as e:
         logger.error(f"Failed to fetch material categories: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch material categories: {str(e)}")
+
+# Task endpoints
+@app.get("/tasks")
+async def get_tasks(project_id: Optional[int] = None):
+    """Get tasks, optionally filtered by project"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        if project_id:
+            cursor.execute("SELECT * FROM tasks WHERE project_id = ?", (project_id,))
+        else:
+            cursor.execute("SELECT * FROM tasks LIMIT 50")
+        
+        tasks = cursor.fetchall()
+        conn.close()
+        
+        return [
+            {
+                "id": t["id"],
+                "project_id": t["project_id"],
+                "parent_task_id": t["parent_task_id"],
+                "name": t["name"],
+                "description": t["description"],
+                "phase_id": t["phase_id"],
+                "component_id": t["component_id"],
+                "duration_days": t["duration_days"],
+                "planned_start_date": t["planned_start_date"],
+                "planned_finish_date": t["planned_finish_date"],
+                "actual_start_date": t["actual_start_date"],
+                "actual_finish_date": t["actual_finish_date"],
+                "percent_complete": t["percent_complete"],
+                "status": t["status"],
+                "priority": t["priority"],
+                "assigned_team_id": t["assigned_team_id"],
+                "created_at": t["created_at"]
+            }
+            for t in tasks
+        ]
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch tasks: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
+
+@app.post("/tasks")
+async def create_task(task: dict):
+    """Create a new task with proper project planning logic"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Extract task data
+        project_id = task.get("project_id")
+        name = task.get("name")
+        description = task.get("description", "")
+        phase_id = task.get("phase_id")
+        component_id = task.get("component_id")
+        duration_days = task.get("duration_days", 1)
+        priority = task.get("priority", "medium")
+        status = task.get("status", "pending")
+        planned_start_date = task.get("planned_start_date")
+        planned_finish_date = task.get("planned_finish_date")
+        parent_task_id = task.get("parent_task_id")
+        
+        if not project_id or not name:
+            raise HTTPException(status_code=400, detail="Project ID and name are required")
+        
+        # Calculate start and finish dates if not provided
+        if not planned_start_date or not planned_finish_date:
+            # Get project start date
+            cursor.execute("SELECT start_date FROM projects WHERE id = ?", (project_id,))
+            project = cursor.fetchone()
+            project_start = project["start_date"] if project and project["start_date"] else datetime.now().date()
+            
+            # Calculate task dates based on dependencies
+            if parent_task_id:
+                # Get parent task finish date
+                cursor.execute("SELECT planned_finish_date FROM tasks WHERE id = ?", (parent_task_id,))
+                parent_task = cursor.fetchone()
+                if parent_task and parent_task["planned_finish_date"]:
+                    planned_start_date = parent_task["planned_finish_date"]
+                else:
+                    planned_start_date = project_start
+            else:
+                planned_start_date = project_start
+            
+            # Calculate finish date
+            if planned_start_date:
+                start_date = datetime.strptime(planned_start_date, "%Y-%m-%d").date()
+                finish_date = start_date + timedelta(days=duration_days)
+                planned_finish_date = finish_date.strftime("%Y-%m-%d")
+        
+        cursor.execute("""
+            INSERT INTO tasks (project_id, parent_task_id, name, description, phase_id, 
+                             component_id, duration_days, planned_start_date, planned_finish_date, 
+                             priority, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (project_id, parent_task_id, name, description, phase_id, 
+              component_id, duration_days, planned_start_date, planned_finish_date, 
+              priority, status))
+        
+        task_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Task created: {task_id}")
+        return {
+            "id": task_id,
+            "project_id": project_id,
+            "parent_task_id": parent_task_id,
+            "name": name,
+            "description": description,
+            "phase_id": phase_id,
+            "component_id": component_id,
+            "duration_days": duration_days,
+            "planned_start_date": planned_start_date,
+            "planned_finish_date": planned_finish_date,
+            "priority": priority,
+            "status": status,
+            "created_at": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
+
+@app.put("/tasks/{task_id}")
+async def update_task(task_id: int, task_update: dict):
+    """Update a task"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if task exists
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        existing_task = cursor.fetchone()
+        
+        if not existing_task:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Build update query dynamically
+        update_fields = []
+        update_values = []
+        
+        allowed_fields = [
+            "name", "description", "status", "priority", "duration_days",
+            "planned_start_date", "planned_finish_date", "actual_start_date", 
+            "actual_finish_date", "percent_complete", "phase_id", "component_id",
+            "parent_task_id", "assigned_team_id"
+        ]
+        
+        for field, value in task_update.items():
+            if field in allowed_fields:
+                update_fields.append(f"{field} = ?")
+                update_values.append(value)
+        
+        if not update_fields:
+            conn.close()
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        
+        update_values.append(task_id)
+        query = f"UPDATE tasks SET {', '.join(update_fields)} WHERE id = ?"
+        
+        cursor.execute(query, update_values)
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Task updated: {task_id}")
+        return {"message": "Task updated successfully", "id": task_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
+
+@app.delete("/tasks/{task_id}")
+async def delete_task(task_id: int):
+    """Delete a task"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if task exists
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        existing_task = cursor.fetchone()
+        
+        if not existing_task:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Task deleted: {task_id}")
+        return {"message": "Task deleted successfully", "id": task_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete task: {str(e)}")
+
+@app.get("/projects/{project_id}/planning")
+async def get_project_planning(project_id: int):
+    """Get project planning with effort calculation and timeline"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get project details
+        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        project = cursor.fetchone()
+        
+        if not project:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get all tasks for the project
+        cursor.execute("""
+            SELECT * FROM tasks 
+            WHERE project_id = ? 
+            ORDER BY planned_start_date, phase_id, id
+        """, (project_id,))
+        tasks = cursor.fetchall()
+        
+        # Calculate project timeline and effort
+        total_effort_days = 0
+        sequential_effort_days = 0
+        earliest_start = None
+        latest_finish = None
+        
+        if tasks:
+            # Calculate sequential effort (critical path)
+            task_dates = []
+            for task in tasks:
+                if task["planned_start_date"] and task["planned_finish_date"]:
+                    start_date = datetime.strptime(task["planned_start_date"], "%Y-%m-%d").date()
+                    finish_date = datetime.strptime(task["planned_finish_date"], "%Y-%m-%d").date()
+                    task_dates.append((start_date, finish_date, task["duration_days"]))
+                    
+                    if not earliest_start or start_date < earliest_start:
+                        earliest_start = start_date
+                    if not latest_finish or finish_date > latest_finish:
+                        latest_finish = finish_date
+                
+                total_effort_days += task["duration_days"] or 0
+            
+            # Calculate sequential effort (simplified critical path)
+            if earliest_start and latest_finish:
+                sequential_effort_days = (latest_finish - earliest_start).days
+        
+        conn.close()
+        
+        return {
+            "project": {
+                "id": project["id"],
+                "name": project["name"],
+                "description": project["description"],
+                "start_date": project["start_date"],
+                "target_completion": project["target_completion"],
+                "status": project["status"]
+            },
+            "planning": {
+                "total_tasks": len(tasks),
+                "total_effort_days": total_effort_days,
+                "sequential_effort_days": sequential_effort_days,
+                "earliest_start": earliest_start.isoformat() if earliest_start else None,
+                "latest_finish": latest_finish.isoformat() if latest_finish else None,
+                "parallelism_factor": total_effort_days / sequential_effort_days if sequential_effort_days > 0 else 1
+            },
+            "tasks": [
+                {
+                    "id": t["id"],
+                    "name": t["name"],
+                    "description": t["description"],
+                    "phase_id": t["phase_id"],
+                    "component_id": t["component_id"],
+                    "duration_days": t["duration_days"],
+                    "planned_start_date": t["planned_start_date"],
+                    "planned_finish_date": t["planned_finish_date"],
+                    "actual_start_date": t["actual_start_date"],
+                    "actual_finish_date": t["actual_finish_date"],
+                    "percent_complete": t["percent_complete"],
+                    "status": t["status"],
+                    "priority": t["priority"],
+                    "parent_task_id": t["parent_task_id"]
+                }
+                for t in tasks
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get project planning: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get project planning: {str(e)}")
 
 # Demo data endpoint
 @app.get("/demo/setup")
