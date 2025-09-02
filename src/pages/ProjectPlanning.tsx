@@ -70,8 +70,6 @@ const ProjectPlanning: React.FC = () => {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [planningData, setPlanningData] = useState<any>(null);
   
   // Dialog states
   const [openProjectDialog, setOpenProjectDialog] = useState(false);
@@ -176,25 +174,6 @@ const ProjectPlanning: React.FC = () => {
     }
   };
 
-  const loadProjectPlanning = async (projectId: number) => {
-    try {
-      setLoading(true);
-      setError('');
-      const data = await apiService.getProjectPlanning(projectId);
-      setPlanningData(data);
-      setTasks(data.tasks || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load project planning');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleProjectSelect = async (project: Project) => {
-    setSelectedProject(project);
-    await loadProjectPlanning(project.id);
-  };
-
   const handleCreateProject = async () => {
     try {
       const projectData = {
@@ -263,15 +242,6 @@ const ProjectPlanning: React.FC = () => {
       const newTask = await apiService.createTask(taskData);
       setTasks([...tasks, newTask]);
       setOpenTaskDialog(false);
-      setSuccessMessage('Task created successfully!');
-      
-      // Refresh planning data to get updated effort calculations
-      if (selectedProject) {
-        await loadProjectPlanning(selectedProject.id);
-      }
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err: any) {
       setError(err.message || 'Failed to create task');
     }
@@ -330,15 +300,6 @@ const ProjectPlanning: React.FC = () => {
       setTasks(tasks.map(t => t.id === editingTask.id ? updatedTask : t));
       setOpenEditTaskDialog(false);
       setEditingTask(null);
-      setSuccessMessage('Task updated successfully!');
-      
-      // Refresh planning data to get updated effort calculations
-      if (selectedProject) {
-        await loadProjectPlanning(selectedProject.id);
-      }
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err: any) {
       setError(err.message || 'Failed to update task');
     }
@@ -347,20 +308,11 @@ const ProjectPlanning: React.FC = () => {
   const handleDeleteTask = async (taskId: number) => {
     if (window.confirm('Are you sure you want to delete this task?')) {
       try {
-              await apiService.deleteTask(taskId);
-      setTasks(tasks.filter(t => t.id !== taskId));
-      setSuccessMessage('Task deleted successfully!');
-      
-      // Refresh planning data to get updated effort calculations
-      if (selectedProject) {
-        await loadProjectPlanning(selectedProject.id);
+        await apiService.deleteTask(taskId);
+        setTasks(tasks.filter(t => t.id !== taskId));
+      } catch (err: any) {
+        setError(err.message || 'Failed to delete task');
       }
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete task');
-    }
     }
   };
 
@@ -414,22 +366,8 @@ const ProjectPlanning: React.FC = () => {
       </Box>
 
       {error && (
-        <Alert 
-          severity="error" 
-          sx={{ mb: 2 }}
-          onClose={() => setError('')}
-        >
+        <Alert severity="error" sx={{ mb: 2 }}>
           {error}
-        </Alert>
-      )}
-      
-      {successMessage && (
-        <Alert 
-          severity="success" 
-          sx={{ mb: 2 }}
-          onClose={() => setSuccessMessage('')}
-        >
-          {successMessage}
         </Alert>
       )}
 
@@ -448,7 +386,7 @@ const ProjectPlanning: React.FC = () => {
                     cursor: 'pointer',
                     border: selectedProject?.id === project.id ? '2px solid #2563EB' : '1px solid #e0e0e0'
                   }}
-                  onClick={() => handleProjectSelect(project)}
+                  onClick={() => setSelectedProject(project)}
                 >
                   <CardContent>
                     <Typography variant="h6" noWrap>
@@ -485,14 +423,6 @@ const ProjectPlanning: React.FC = () => {
               </Typography>
               <Button
                 variant="outlined"
-                onClick={() => selectedProject && loadProjectPlanning(selectedProject.id)}
-                disabled={loading}
-                sx={{ mr: 1 }}
-              >
-                Refresh
-              </Button>
-              <Button
-                variant="outlined"
                 startIcon={<AddIcon />}
                 onClick={() => setOpenTaskDialog(true)}
                 sx={{ mr: 1 }}
@@ -521,64 +451,6 @@ const ProjectPlanning: React.FC = () => {
                 ))}
               </Stepper>
             </Box>
-
-            {/* Planning Summary */}
-            {planningData && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Planning Summary
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box textAlign="center" p={2} sx={{ backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-                      <Typography variant="h4" color="primary">
-                        {planningData.planning?.total_tasks || 0}
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        Total Tasks
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box textAlign="center" p={2} sx={{ backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-                      <Typography variant="h4" color="secondary">
-                        {planningData.planning?.total_effort_days || 0}
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        Total Effort (Days)
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box textAlign="center" p={2} sx={{ backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-                      <Typography variant="h4" color="info.main">
-                        {planningData.planning?.sequential_effort_days || 0}
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        Sequential Effort (Days)
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box textAlign="center" p={2} sx={{ backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-                      <Typography variant="h4" color="success.main">
-                        {planningData.planning?.parallelism_factor?.toFixed(1) || '1.0'}
-                      </Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        Parallelism Factor
-                      </Typography>
-                    </Box>
-                  </Grid>
-                </Grid>
-                {planningData.planning?.earliest_start && planningData.planning?.latest_finish && (
-                  <Box mt={2} textAlign="center">
-                    <Typography variant="body2" color="textSecondary">
-                      Timeline: {new Date(planningData.planning.earliest_start).toLocaleDateString()} - {new Date(planningData.planning.latest_finish).toLocaleDateString()}
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-            )}
 
             {/* Auto-Generated Plan Info */}
             <Alert severity="info" sx={{ mb: 3 }}>
