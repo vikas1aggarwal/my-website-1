@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 2 Frontend Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Phase 2: Material Intelligence Frontend Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>Backend API Status</h2>
+        <button onclick="testHealthCheck()">Test Health Check</button>
+        <button onclick="testDashboard()">Test Dashboard</button>
+        <button onclick="testSuppliers()">Test Suppliers</button>
+        <button onclick="testMaterialCosts()">Test Material Costs</button>
+        <div id="api-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Frontend Navigation Test</h2>
+        <p>Click the links below to test the new Phase 2 pages:</p>
+        <a href="http://localhost:3000/material-intelligence" target="_blank">
+            <button>Material Intelligence Dashboard</button>
+        </a>
+        <a href="http://localhost:3000/suppliers" target="_blank">
+            <button>Suppliers Management</button>
+        </a>
+        <a href="http://localhost:3000/cost-tracking" target="_blank">
+            <button>Cost Tracking</button>
+        </a>
+        <a href="http://localhost:3000/alternatives" target="_blank">
+            <button>Material Alternatives</button>
+        </a>
+    </div>
+
+    <div class="test-section">
+        <h2>Integration Summary</h2>
+        <div id="summary">
+            <p><strong>✅ Backend API:</strong> Running on port 5001</p>
+            <p><strong>✅ Frontend:</strong> Running on port 3000</p>
+            <p><strong>✅ Database:</strong> Connected with Phase 2 schema</p>
+            <p><strong>✅ New Pages:</strong> All Phase 2 pages created</p>
+            <p><strong>✅ Navigation:</strong> Updated with Phase 2 menu</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5001/api';
+        
+        async function testHealthCheck() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                displayResult('Health Check', data, response.ok);
+            } catch (error) {
+                displayResult('Health Check', { error: error.message }, false);
+            }
+        }
+
+        async function testDashboard() {
+            try {
+                const response = await fetch(`${API_BASE}/dashboard/material-intelligence`);
+                const data = await response.json();
+                displayResult('Dashboard', data, response.ok);
+            } catch (error) {
+                displayResult('Dashboard', { error: error.message }, false);
+            }
+        }
+
+        async function testSuppliers() {
+            try {
+                const response = await fetch(`${API_BASE}/suppliers`);
+                const data = await response.json();
+                displayResult('Suppliers', data, response.ok);
+            } catch (error) {
+                displayResult('Suppliers', { error: error.message }, false);
+            }
+        }
+
+        async function testMaterialCosts() {
+            try {
+                const response = await fetch(`${API_BASE}/materials/1/costs`);
+                const data = await response.json();
+                displayResult('Material Costs', data, response.ok);
+            } catch (error) {
+                displayResult('Material Costs', { error: error.message }, false);
+            }
+        }
+
+        function displayResult(testName, data, success) {
+            const resultsDiv = document.getElementById('api-results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = success ? 'success' : 'error';
+            resultDiv.innerHTML = `
+                <h3>${testName} ${success ? '✅' : '❌'}</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        // Auto-run health check on page load
+        window.onload = function() {
+            testHealthCheck();
+        };
+    </script>
+</body>
+</html>

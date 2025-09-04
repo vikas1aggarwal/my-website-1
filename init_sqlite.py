@@ -154,6 +154,85 @@ def init_sqlite_db():
             FOREIGN KEY (component_id) REFERENCES building_components (id)
         );
         
+        -- Suppliers
+        CREATE TABLE suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            contact_person TEXT,
+            email TEXT,
+            phone TEXT,
+            address TEXT,
+            city TEXT,
+            state TEXT,
+            country TEXT DEFAULT 'India',
+            rating REAL DEFAULT 0.0,
+            is_verified BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Material Costs (Historical Pricing)
+        CREATE TABLE material_costs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_id INTEGER,
+            supplier_id INTEGER,
+            unit_cost REAL NOT NULL,
+            currency TEXT DEFAULT 'INR',
+            cost_date DATE NOT NULL,
+            is_current BOOLEAN DEFAULT 1,
+            source TEXT DEFAULT 'manual',
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (material_id) REFERENCES materials (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        );
+        
+        -- Project Phases (Custom phases per project)
+        CREATE TABLE project_phases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER,
+            name TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            description TEXT,
+            planned_start_date DATE,
+            planned_end_date DATE,
+            actual_start_date DATE,
+            actual_end_date DATE,
+            status TEXT DEFAULT 'pending',
+            phase_type TEXT DEFAULT 'standard', -- 'standard' or 'custom'
+            base_phase_id INTEGER, -- Reference to standard construction_phases
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+            FOREIGN KEY (base_phase_id) REFERENCES construction_phases (id)
+        );
+        
+        -- Phase Material Requirements
+        CREATE TABLE phase_material_requirements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phase_id INTEGER,
+            material_id INTEGER,
+            estimated_quantity REAL NOT NULL,
+            unit TEXT NOT NULL,
+            priority TEXT DEFAULT 'medium', -- 'low', 'medium', 'high', 'critical'
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (phase_id) REFERENCES project_phases (id) ON DELETE CASCADE,
+            FOREIGN KEY (material_id) REFERENCES materials (id)
+        );
+        
+        -- Material Alternatives
+        CREATE TABLE material_alternatives (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            primary_material_id INTEGER,
+            alternative_material_id INTEGER,
+            compatibility_score REAL DEFAULT 0.0, -- 0.0 to 1.0
+            cost_difference_percent REAL DEFAULT 0.0, -- Positive = more expensive
+            quality_difference TEXT, -- 'better', 'similar', 'worse'
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (primary_material_id) REFERENCES materials (id),
+            FOREIGN KEY (alternative_material_id) REFERENCES materials (id)
+        );
+        
         -- Cost Estimates
         CREATE TABLE cost_estimates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +257,17 @@ def init_sqlite_db():
         CREATE INDEX idx_cost_estimates_task ON cost_estimates(task_id);
         CREATE INDEX idx_projects_builder ON projects(builder_id);
         CREATE INDEX idx_projects_status ON projects(status);
+        
+        -- Phase 2: Material Intelligence Indexes
+        CREATE INDEX idx_suppliers_location ON suppliers(city, state);
+        CREATE INDEX idx_material_costs_material ON material_costs(material_id);
+        CREATE INDEX idx_material_costs_supplier ON material_costs(supplier_id);
+        CREATE INDEX idx_material_costs_date ON material_costs(cost_date);
+        CREATE INDEX idx_project_phases_project ON project_phases(project_id);
+        CREATE INDEX idx_phase_material_requirements_phase ON phase_material_requirements(phase_id);
+        CREATE INDEX idx_phase_material_requirements_material ON phase_material_requirements(material_id);
+        CREATE INDEX idx_material_alternatives_primary ON material_alternatives(primary_material_id);
+        CREATE INDEX idx_material_alternatives_alternative ON material_alternatives(alternative_material_id);
     """)
     
     print("Inserting master data...")
@@ -404,6 +494,146 @@ def init_sqlite_db():
         cost_estimates
     )
     
+    # Phase 2: Insert top Indian suppliers for each material category
+    print("Inserting Phase 2: Material Intelligence Data...")
+    
+    suppliers = [
+        # Cement & Concrete
+        ('UltraTech Cement Ltd', 'Rajesh Kumar', 'info@ultratechcement.com', '+91-22-6691-8000', 
+         'Ahmedabad House, 23 Kasturba Gandhi Marg, New Delhi', 'New Delhi', 'Delhi', 4.8, 1),
+        ('ACC Limited', 'Priya Sharma', 'corporate@acclimited.com', '+91-22-6692-1000', 
+         'Cement House, 121 Maharshi Karve Road, Mumbai', 'Mumbai', 'Maharashtra', 4.7, 1),
+        ('Shree Cement Ltd', 'Amit Patel', 'info@shreecement.com', '+91-141-272-1000', 
+         'Bangur Nagar, Beawar, Rajasthan', 'Beawar', 'Rajasthan', 4.6, 1),
+        
+        # Steel & Metal
+        ('Tata Steel Ltd', 'Vikram Singh', 'info@tatasteel.com', '+91-657-243-1000', 
+         'Jamshedpur, Jharkhand', 'Jamshedpur', 'Jharkhand', 4.9, 1),
+        ('JSW Steel Ltd', 'Meera Reddy', 'info@jsw.in', '+91-22-4286-1000', 
+         'JSW Centre, Bandra Kurla Complex, Mumbai', 'Mumbai', 'Maharashtra', 4.8, 1),
+        ('SAIL (Steel Authority of India)', 'Arjun Verma', 'info@sail.co.in', '+91-11-2436-1000', 
+         'Ispat Bhawan, Lodhi Road, New Delhi', 'New Delhi', 'Delhi', 4.7, 1),
+        
+        # Tiles & Flooring
+        ('Kajaria Ceramics Ltd', 'Sunita Kapoor', 'info@kajaria.com', '+91-11-4666-6000', 
+         'Kajaria House, Mathura Road, New Delhi', 'New Delhi', 'Delhi', 4.8, 1),
+        ('Somany Ceramics Ltd', 'Rahul Mehta', 'info@somany.com', '+91-11-4666-7000', 
+         'Somany House, Mathura Road, New Delhi', 'New Delhi', 'Delhi', 4.7, 1),
+        ('Asian Granito India Ltd', 'Deepak Agarwal', 'info@asiangranito.com', '+91-79-4020-1000', 
+         'Ahmedabad, Gujarat', 'Ahmedabad', 'Gujarat', 4.6, 1),
+        
+        # Paint & Coatings
+        ('Asian Paints Ltd', 'Neha Gupta', 'info@asianpaints.com', '+91-22-6211-8000', 
+         'Asian Paints House, Worli, Mumbai', 'Mumbai', 'Maharashtra', 4.9, 1),
+        ('Berger Paints India Ltd', 'Rajiv Malhotra', 'info@bergerpaints.com', '+91-33-2482-1000', 
+         'Kolkata, West Bengal', 'Kolkata', 'West Bengal', 4.8, 1),
+        ('Kansai Nerolac Paints Ltd', 'Anita Desai', 'info@kansainerolac.com', '+91-22-2490-1000', 
+         'Mumbai, Maharashtra', 'Mumbai', 'Maharashtra', 4.7, 1),
+        
+        # Electrical
+        ('Havells India Ltd', 'Suresh Kumar', 'info@havells.com', '+91-11-4666-1000', 
+         'Havells House, New Delhi', 'New Delhi', 'Delhi', 4.8, 1),
+        ('Crompton Greaves Consumer Electricals', 'Priyanka Singh', 'info@crompton.co.in', '+91-22-2423-1000', 
+         'Mumbai, Maharashtra', 'Mumbai', 'Maharashtra', 4.7, 1),
+        ('Polycab India Ltd', 'Vikram Malhotra', 'info@polycab.com', '+91-22-2490-2000', 
+         'Mumbai, Maharashtra', 'Mumbai', 'Maharashtra', 4.6, 1),
+        
+        # Plumbing
+        ('Finolex Industries Ltd', 'Rajesh Agarwal', 'info@finolex.com', '+91-22-2490-3000', 
+         'Mumbai, Maharashtra', 'Mumbai', 'Maharashtra', 4.8, 1),
+        ('Astral Poly Technik Ltd', 'Meera Patel', 'info@astralcpvc.com', '+91-79-4020-2000', 
+         'Ahmedabad, Gujarat', 'Ahmedabad', 'Gujarat', 4.7, 1),
+        ('Supreme Industries Ltd', 'Amit Kumar', 'info@supreme.co.in', '+91-22-2490-4000', 
+         'Mumbai, Maharashtra', 'Mumbai', 'Maharashtra', 4.6, 1)
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO suppliers (name, contact_person, email, phone, address, city, state, rating, is_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        suppliers
+    )
+    
+    # Insert material costs with supplier information
+    material_costs = [
+        # Cement costs from different suppliers
+        (1, 1, 350.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from UltraTech'),
+        (1, 2, 345.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from ACC'),
+        (1, 3, 348.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Shree Cement'),
+        
+        # Steel costs from different suppliers
+        (9, 4, 65000.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Tata Steel'),
+        (9, 5, 64800.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from JSW Steel'),
+        (9, 6, 65200.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from SAIL'),
+        
+        # Tile costs from different suppliers
+        (22, 7, 1200.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Kajaria'),
+        (22, 8, 1180.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Somany'),
+        (22, 9, 1220.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Asian Granito'),
+        
+        # Paint costs from different suppliers
+        (25, 10, 180.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Asian Paints'),
+        (25, 11, 175.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Berger'),
+        (25, 12, 178.00, 'INR', '2024-01-01', 1, 'manual', 'Base price from Kansai Nerolac')
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO material_costs (material_id, supplier_id, unit_cost, currency, cost_date, is_current, source, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        material_costs
+    )
+    
+    # Insert material alternatives
+    material_alternatives = [
+        # Cement alternatives
+        (1, 2, 0.95, -1.4, 'similar', 'ACC cement as alternative to UltraTech'),
+        (1, 3, 0.92, -0.6, 'similar', 'Shree Cement as alternative to UltraTech'),
+        
+        # Steel alternatives
+        (9, 10, 0.98, -0.3, 'similar', 'Fe 550D as alternative to Fe 500D'),
+        (9, 11, 0.96, -0.6, 'similar', 'Structural steel as alternative to TMT bars'),
+        
+        # Tile alternatives
+        (22, 23, 0.85, -37.5, 'similar', 'Ceramic tiles as alternative to vitrified'),
+        (22, 24, 0.90, -57.1, 'better', 'Marble tiles as premium alternative'),
+        
+        # Paint alternatives
+        (25, 26, 0.97, -2.8, 'similar', 'Berger paint as alternative to Asian Paints'),
+        (25, 27, 0.99, -1.1, 'similar', 'Kansai Nerolac as alternative to Asian Paints')
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO material_alternatives (primary_material_id, alternative_material_id, compatibility_score, cost_difference_percent, quality_difference, notes) VALUES (?, ?, ?, ?, ?, ?)",
+        material_alternatives
+    )
+    
+    # Insert sample project phases for the sample project
+    project_phases = [
+        (1, 'Site Preparation & Foundation', 1, 'Site clearing and foundation work', '2024-02-01', '2024-02-28', None, None, 'pending', 'standard', 1),
+        (1, 'Structure & Masonry', 2, 'Column, beam, and wall construction', '2024-03-01', '2024-04-15', None, None, 'pending', 'standard', 3),
+        (1, 'Roofing & Finishing', 3, 'Roof construction and final touches', '2024-04-16', '2024-06-30', None, None, 'pending', 'standard', 5),
+        (1, 'Custom Phase: Interior Design', 4, 'Custom interior design and decoration', '2024-07-01', '2024-07-31', None, None, 'pending', 'custom', None)
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO project_phases (project_id, name, sequence, description, planned_start_date, planned_end_date, actual_start_date, actual_end_date, status, phase_type, base_phase_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        project_phases
+    )
+    
+    # Insert phase material requirements
+    phase_material_requirements = [
+        (1, 1, 100.0, 'Bag (50kg)', 'critical', 'Cement for foundation'),
+        (1, 4, 50.0, 'Cubic Meter', 'critical', 'River sand for foundation'),
+        (1, 5, 30.0, 'Cubic Meter', 'critical', 'Coarse aggregate for foundation'),
+        (2, 9, 5.0, 'Ton', 'critical', 'TMT steel for structure'),
+        (2, 6, 5000.0, 'Piece', 'high', 'Bricks for masonry'),
+        (3, 22, 200.0, 'Square Meter', 'high', 'Floor tiles for finishing'),
+        (3, 25, 50.0, 'Liter', 'medium', 'Paint for walls'),
+        (4, 22, 100.0, 'Square Meter', 'medium', 'Premium tiles for interior design')
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO phase_material_requirements (phase_id, material_id, estimated_quantity, unit, priority, notes) VALUES (?, ?, ?, ?, ?, ?)",
+        phase_material_requirements
+    )
+    
     # Commit changes
     conn.commit()
     conn.close()
@@ -419,6 +649,15 @@ def init_sqlite_db():
     print(f"📊 Created 1 sample project")
     print(f"📊 Created {len(sample_tasks)} sample tasks")
     print(f"📊 Created {len(cost_estimates)} sample cost estimates")
+    
+    # Phase 2: Material Intelligence Summary
+    print(f"🚀 Phase 2: Material Intelligence System")
+    print(f"📊 Created {len(suppliers)} top Indian suppliers")
+    print(f"📊 Created {len(material_costs)} material cost records")
+    print(f"📊 Created {len(material_alternatives)} material alternatives")
+    print(f"📊 Created {len(project_phases)} project phases (including custom)")
+    print(f"📊 Created {len(phase_material_requirements)} phase material requirements")
+    print(f"💡 Features: Supplier management, cost tracking, alternatives, custom phases")
 
 if __name__ == "__main__":
     init_sqlite_db()

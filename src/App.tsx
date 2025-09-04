@@ -8,6 +8,9 @@ import Materials from './pages/Materials';
 import ProjectPlanning from './pages/ProjectPlanning';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import MaterialIntelligence from './pages/MaterialIntelligence';
+import Suppliers from './pages/Suppliers';
+import Alternatives from './pages/Alternatives';
 
 function App() {
   return (
@@ -25,6 +28,10 @@ function App() {
                   <Route path="/projects" element={<Projects />} />
                   <Route path="/materials" element={<Materials />} />
                   <Route path="/planning" element={<ProjectPlanning />} />
+                  {/* Phase 2: Material Intelligence Routes */}
+                  <Route path="/material-intelligence" element={<MaterialIntelligence />} />
+                  <Route path="/suppliers" element={<Suppliers />} />
+                  <Route path="/alternatives" element={<Alternatives />} />
                 </Routes>
               </Container>
             </Layout>

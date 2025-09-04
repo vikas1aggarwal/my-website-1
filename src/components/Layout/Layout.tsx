@@ -16,6 +16,7 @@ import {
   Menu,
   MenuItem,
   Divider,
+  Collapse,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -25,6 +26,12 @@ import {
   Assignment as TaskIcon,
   AccountCircle,
   Logout,
+  ExpandLess,
+  ExpandMore,
+  Inventory as InventoryIcon,
+  People as PeopleIcon,
+  TrendingUp as TrendingUpIcon,
+  Compare as CompareIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -37,6 +44,8 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [materialIntelligenceOpen, setMaterialIntelligenceOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,11 +68,28 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     handleMenuClose();
   };
 
+  const handleMaterialIntelligenceToggle = () => {
+    setMaterialIntelligenceOpen(!materialIntelligenceOpen);
+  };
+
+  const handleProjectsToggle = () => {
+    setProjectsOpen(!projectsOpen);
+  };
+
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+  ];
+
+  const projectsItems = [
     { text: 'Projects', icon: <BusinessIcon />, path: '/projects' },
-    { text: 'Materials', icon: <ConstructionIcon />, path: '/materials' },
     { text: 'Planning', icon: <TaskIcon />, path: '/planning' },
+  ];
+
+  const materialIntelligenceItems = [
+    { text: 'Material Summary', icon: <InventoryIcon />, path: '/material-intelligence' },
+    { text: 'Materials', icon: <ConstructionIcon />, path: '/materials' },
+    { text: 'Suppliers', icon: <PeopleIcon />, path: '/suppliers' },
+    { text: 'Alternatives', icon: <CompareIcon />, path: '/alternatives' },
   ];
 
   const drawer = (
@@ -75,6 +101,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </Toolbar>
       <Divider />
       <List>
+        {/* Dashboard */}
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
             <ListItemButton
@@ -86,6 +113,64 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </ListItemButton>
           </ListItem>
         ))}
+        
+        <Divider sx={{ my: 1 }} />
+        
+        {/* Projects Section */}
+        <ListItem disablePadding>
+          <ListItemButton onClick={handleProjectsToggle}>
+            <ListItemIcon>
+              <BusinessIcon />
+            </ListItemIcon>
+            <ListItemText primary="Projects" />
+            {projectsOpen ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+        </ListItem>
+        
+        <Collapse in={projectsOpen} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {projectsItems.map((item) => (
+              <ListItem key={item.text} disablePadding sx={{ pl: 4 }}>
+                <ListItemButton
+                  selected={location.pathname === item.path}
+                  onClick={() => navigate(item.path)}
+                >
+                  <ListItemIcon>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.text} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
+        
+        <Divider sx={{ my: 1 }} />
+        
+        {/* Material Intelligence Section */}
+        <ListItem disablePadding>
+          <ListItemButton onClick={handleMaterialIntelligenceToggle}>
+            <ListItemIcon>
+              <InventoryIcon />
+            </ListItemIcon>
+            <ListItemText primary="Material Intelligence" />
+            {materialIntelligenceOpen ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+        </ListItem>
+        
+        <Collapse in={materialIntelligenceOpen} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {materialIntelligenceItems.map((item) => (
+              <ListItem key={item.text} disablePadding sx={{ pl: 4 }}>
+                <ListItemButton
+                  selected={location.pathname === item.path}
+                  onClick={() => navigate(item.path)}
+                >
+                  <ListItemIcon>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.text} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
       </List>
     </div>
   );
