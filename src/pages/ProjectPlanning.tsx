@@ -40,6 +40,8 @@ import {
   CheckCircle as CheckIcon,
   Schedule as ScheduleIcon,
   Assignment as TaskIcon,
+  Timeline as TimelineIcon,
+  ViewTimeline as ViewTimelineIcon,
 } from '@mui/icons-material';
 import apiService from '../services/api';
 import { Project, Task, Material, MaterialCategory } from '../types';
@@ -102,6 +104,7 @@ const ProjectPlanning: React.FC = () => {
     planned_finish_date: '',
     priority: 'medium',
     parent_task_id: '',
+    dependency_type: 'finish-to-start',
     // New fields for cost calculation
     materials: [],
     labor: [],
@@ -135,6 +138,10 @@ const ProjectPlanning: React.FC = () => {
   const [selectedMaterials, setSelectedMaterials] = useState<any[]>([]);
   const [selectedLabor, setSelectedLabor] = useState<any[]>([]);
   const [materialOptions, setMaterialOptions] = useState<any[]>([]);
+  
+  // Gantt chart state
+  const [showGanttChart, setShowGanttChart] = useState(false);
+  const [timelineData, setTimelineData] = useState<any[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -412,6 +419,51 @@ const ProjectPlanning: React.FC = () => {
     return materialCost + laborCost;
   };
 
+  // Gantt chart helper functions
+  const generateTimelineData = (projectId: number) => {
+    const projectTasks = getProjectTasks(projectId);
+    const timeline = projectTasks.map((task, index) => {
+      const startDate = task.planned_start_date ? new Date(task.planned_start_date) : new Date();
+      const endDate = task.planned_finish_date ? new Date(task.planned_finish_date) : new Date(startDate.getTime() + (task.duration_days || 1) * 24 * 60 * 60 * 1000);
+      
+      // Find dependencies
+      const dependencies = projectTasks
+        .filter(t => t.parent_task_id === task.id)
+        .map(t => ({
+          id: t.id,
+          name: t.name,
+          type: 'finish-to-start' // Default dependency type
+        }));
+      
+      return {
+        id: task.id,
+        name: task.name,
+        start: startDate,
+        end: endDate,
+        duration: task.duration_days || 1,
+        phase: phases.find(p => p.id === task.phase_id)?.name || 'Unknown',
+        status: task.status,
+        priority: task.priority,
+        cost: task.total_cost || 0,
+        color: getTaskColor(task.status, task.priority),
+        dependencies: dependencies,
+        parent_task_id: task.parent_task_id,
+        dependency_type: task.dependency_type || 'finish-to-start',
+      };
+    });
+    
+    setTimelineData(timeline);
+    return timeline;
+  };
+
+  const getTaskColor = (status: string, priority: string) => {
+    if (status === 'completed') return '#4caf50';
+    if (status === 'in_progress') return '#ff9800';
+    if (priority === 'high') return '#f44336';
+    if (priority === 'medium') return '#2196f3';
+    return '#9e9e9e';
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -501,21 +553,36 @@ const ProjectPlanning: React.FC = () => {
               <Typography variant="h5">
                 {selectedProject.name} - Project Plan
               </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={() => setOpenTaskDialog(true)}
-                sx={{ mr: 1 }}
-              >
-                Add Custom Task
-              </Button>
-              <Button
-                variant="text"
-                startIcon={<TaskIcon />}
-                onClick={() => setOpenPlanningDialog(true)}
-              >
-                Planning Help
-              </Button>
+              <Box>
+                <Button
+                  variant={showGanttChart ? "contained" : "outlined"}
+                  startIcon={<ViewTimelineIcon />}
+                  onClick={() => {
+                    setShowGanttChart(!showGanttChart);
+                    if (!showGanttChart) {
+                      generateTimelineData(selectedProject.id);
+                    }
+                  }}
+                  sx={{ mr: 1 }}
+                >
+                  {showGanttChart ? 'Hide Timeline' : 'Show Timeline'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => setOpenTaskDialog(true)}
+                  sx={{ mr: 1 }}
+                >
+                  Add Custom Task
+                </Button>
+                <Button
+                  variant="text"
+                  startIcon={<TaskIcon />}
+                  onClick={() => setOpenPlanningDialog(true)}
+                >
+                  Planning Help
+                </Button>
+              </Box>
             </Box>
 
             {/* Project Progress */}
@@ -531,6 +598,202 @@ const ProjectPlanning: React.FC = () => {
                 ))}
               </Stepper>
             </Box>
+
+            {/* Gantt Chart Timeline */}
+            {showGanttChart && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Project Timeline (Gantt Chart)
+                </Typography>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <Box sx={{ minWidth: 800, height: 300, position: 'relative' }}>
+                        {/* Timeline Header */}
+                        <Box sx={{ display: 'flex', borderBottom: '2px solid #e0e0e0', mb: 1 }}>
+                          <Box sx={{ width: 200, p: 1, fontWeight: 'bold', borderRight: '1px solid #e0e0e0' }}>
+                            Task Name
+                          </Box>
+                          <Box sx={{ flexGrow: 1, p: 1, fontWeight: 'bold', textAlign: 'center' }}>
+                            Timeline (Days)
+                          </Box>
+                        </Box>
+                        
+                        {/* Timeline Rows */}
+                        {timelineData.map((task, index) => (
+                          <Box key={task.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 40, position: 'relative' }}>
+                            {/* Task Name */}
+                            <Box sx={{ 
+                              width: 200, 
+                              p: 1, 
+                              borderRight: '1px solid #e0e0e0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              fontSize: '0.875rem'
+                            }}>
+                              <Box sx={{ 
+                                width: 12, 
+                                height: 12, 
+                                backgroundColor: task.color, 
+                                borderRadius: '50%', 
+                                mr: 1 
+                              }} />
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                  {task.name}
+                                </Typography>
+                                <Typography variant="caption" color="textSecondary">
+                                  {task.phase}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            
+                            {/* Timeline Bar */}
+                            <Box sx={{ 
+                              flexGrow: 1, 
+                              height: 30, 
+                              position: 'relative',
+                              backgroundColor: '#f5f5f5',
+                              border: '1px solid #e0e0e0',
+                              borderRadius: 1
+                            }}>
+                              {/* Task Bar */}
+                              <Box sx={{
+                                position: 'absolute',
+                                left: `${Math.max(0, (task.start.getDate() - 1) * 2)}%`,
+                                width: `${Math.max(5, task.duration * 2)}%`,
+                                height: '100%',
+                                backgroundColor: task.color,
+                                borderRadius: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'white',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                '&:hover': {
+                                  opacity: 0.8,
+                                  transform: 'scale(1.02)'
+                                }
+                              }}>
+                                {task.duration}d
+                              </Box>
+                              
+                              {/* Cost Label */}
+                              {task.cost > 0 && (
+                                <Box sx={{
+                                  position: 'absolute',
+                                  top: -20,
+                                  left: `${Math.max(0, (task.start.getDate() - 1) * 2)}%`,
+                                  fontSize: '0.7rem',
+                                  color: '#666',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  ₹{task.cost.toLocaleString()}
+                                </Box>
+                              )}
+                              
+                              {/* Dependency Indicator */}
+                              {task.parent_task_id && (
+                                <Box sx={{
+                                  position: 'absolute',
+                                  left: -10,
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  width: 8,
+                                  height: 8,
+                                  backgroundColor: '#ff5722',
+                                  borderRadius: '50%',
+                                  border: '2px solid white',
+                                  boxShadow: '0 0 0 1px #ff5722'
+                                }} />
+                              )}
+                            </Box>
+                          </Box>
+                        ))}
+                        
+                        {/* Dependency Arrows */}
+                        {timelineData.map((task, index) => {
+                          if (!task.parent_task_id) return null;
+                          
+                          const parentTask = timelineData.find(t => t.id === task.parent_task_id);
+                          if (!parentTask) return null;
+                          
+                          const parentIndex = timelineData.findIndex(t => t.id === task.parent_task_id);
+                          const currentIndex = index;
+                          
+                          return (
+                            <Box
+                              key={`dep-${task.id}`}
+                              sx={{
+                                position: 'absolute',
+                                left: 200,
+                                top: parentIndex * 40 + 15,
+                                width: 'calc(100% - 200px)',
+                                height: 2,
+                                backgroundColor: '#ff5722',
+                                opacity: 0.6,
+                                '&::after': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  right: 0,
+                                  top: -3,
+                                  width: 0,
+                                  height: 0,
+                                  borderLeft: '6px solid #ff5722',
+                                  borderTop: '4px solid transparent',
+                                  borderBottom: '4px solid transparent'
+                                }
+                              }}
+                            />
+                          );
+                        })}
+                        
+                        {/* Timeline Legend */}
+                        <Box sx={{ mt: 2, p: 2, backgroundColor: '#f9f9f9', borderRadius: 1 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Legend:
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 12, height: 12, backgroundColor: '#4caf50', borderRadius: '50%', mr: 1 }} />
+                              <Typography variant="body2">Completed</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 12, height: 12, backgroundColor: '#ff9800', borderRadius: '50%', mr: 1 }} />
+                              <Typography variant="body2">In Progress</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 12, height: 12, backgroundColor: '#f44336', borderRadius: '50%', mr: 1 }} />
+                              <Typography variant="body2">High Priority</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 12, height: 12, backgroundColor: '#2196f3', borderRadius: '50%', mr: 1 }} />
+                              <Typography variant="body2">Medium Priority</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 12, height: 12, backgroundColor: '#9e9e9e', borderRadius: '50%', mr: 1 }} />
+                              <Typography variant="body2">Pending</Typography>
+                            </Box>
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 8, height: 8, backgroundColor: '#ff5722', borderRadius: '50%', mr: 1 }} />
+                              <Typography variant="body2">Has Dependencies</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 20, height: 2, backgroundColor: '#ff5722', mr: 1 }} />
+                              <Typography variant="body2">Dependency Arrow</Typography>
+                            </Box>
+                          </Box>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
 
             {/* Auto-Generated Plan Info */}
             <Alert severity="info" sx={{ mb: 3 }}>
@@ -838,6 +1101,43 @@ const ProjectPlanning: React.FC = () => {
                 <MenuItem value="medium">Medium</MenuItem>
                 <MenuItem value="high">High</MenuItem>
               </TextField>
+            </Grid>
+            
+            {/* Task Dependencies */}
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Depends On (Finish-to-Start)</InputLabel>
+                <Select
+                  value={taskForm.parent_task_id}
+                  label="Depends On (Finish-to-Start)"
+                  onChange={(e) => setTaskForm({ ...taskForm, parent_task_id: e.target.value })}
+                >
+                  <MenuItem value="">No Dependencies (Can Start Immediately)</MenuItem>
+                  {selectedProject && getProjectTasks(selectedProject.id)
+                    .filter(task => task.id !== parseInt(taskForm.parent_task_id || '0'))
+                    .map((task) => (
+                      <MenuItem key={task.id} value={task.id}>
+                        {task.name} ({phases.find(p => p.id === task.phase_id)?.name || 'Unknown Phase'})
+                      </MenuItem>
+                    ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Dependency Type</InputLabel>
+                <Select
+                  value={taskForm.dependency_type || 'finish-to-start'}
+                  label="Dependency Type"
+                  onChange={(e) => setTaskForm({ ...taskForm, dependency_type: e.target.value })}
+                >
+                  <MenuItem value="finish-to-start">Finish-to-Start (Default)</MenuItem>
+                  <MenuItem value="start-to-start">Start-to-Start (Parallel)</MenuItem>
+                  <MenuItem value="finish-to-finish">Finish-to-Finish</MenuItem>
+                  <MenuItem value="start-to-finish">Start-to-Finish</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             
             {/* Material Selection Section */}
