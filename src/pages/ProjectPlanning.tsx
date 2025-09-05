@@ -102,6 +102,12 @@ const ProjectPlanning: React.FC = () => {
     planned_finish_date: '',
     priority: 'medium',
     parent_task_id: '',
+    // New fields for cost calculation
+    materials: [],
+    labor: [],
+    material_cost: 0,
+    labor_cost: 0,
+    total_cost: 0,
   });
 
   const [editTaskForm, setEditTaskForm] = useState({
@@ -125,6 +131,11 @@ const ProjectPlanning: React.FC = () => {
     auto_generate: true,
   });
 
+  // New state for material and labor management
+  const [selectedMaterials, setSelectedMaterials] = useState<any[]>([]);
+  const [selectedLabor, setSelectedLabor] = useState<any[]>([]);
+  const [materialOptions, setMaterialOptions] = useState<any[]>([]);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -140,6 +151,18 @@ const ProjectPlanning: React.FC = () => {
       setProjects(projectsData);
       setTasks(tasksData);
       setMaterials(materialsData);
+      
+      // Fetch materials from Material Intelligence system
+      try {
+        const response = await fetch('http://localhost:5001/api/materials');
+        if (response.ok) {
+          const materialIntelligenceData = await response.json();
+          setMaterialOptions(materialIntelligenceData.data || []);
+        }
+      } catch (error) {
+        console.log('Material Intelligence API not available, using Phase 1 materials');
+        setMaterialOptions(materialsData);
+      }
       
       // Fetch phases and components (these would be added to the API)
       // For now, using mock data based on the database schema
@@ -237,11 +260,37 @@ const ProjectPlanning: React.FC = () => {
         component_id: taskForm.component_id ? parseInt(taskForm.component_id) : undefined,
         duration_days: taskForm.duration_days ? parseInt(taskForm.duration_days) : undefined,
         parent_task_id: taskForm.parent_task_id ? parseInt(taskForm.parent_task_id) : undefined,
+        // Include cost data
+        materials_json: JSON.stringify(taskForm.materials),
+        labor_json: JSON.stringify(taskForm.labor),
+        material_cost: taskForm.material_cost,
+        labor_cost: taskForm.labor_cost,
+        total_cost: taskForm.total_cost,
       };
       
       const newTask = await apiService.createTask(taskData);
       setTasks([...tasks, newTask]);
       setOpenTaskDialog(false);
+      
+      // Reset form and selections
+      setTaskForm({
+        name: '',
+        description: '',
+        phase_id: '',
+        component_id: '',
+        duration_days: '',
+        planned_start_date: '',
+        planned_finish_date: '',
+        priority: 'medium',
+        parent_task_id: '',
+        materials: [],
+        labor: [],
+        material_cost: 0,
+        labor_cost: 0,
+        total_cost: 0,
+      });
+      setSelectedMaterials([]);
+      setSelectedLabor([]);
     } catch (err: any) {
       setError(err.message || 'Failed to create task');
     }
@@ -335,6 +384,32 @@ const ProjectPlanning: React.FC = () => {
   const getPhaseTotalDuration = (projectId: number, phaseId: number) => {
     const phaseTasks = getPhaseTasks(projectId, phaseId);
     return phaseTasks.reduce((total, task) => total + (task.duration_days || 0), 0);
+  };
+
+  // Cost calculation helper functions
+  const calculateMaterialCost = (materials: any[]) => {
+    return materials.reduce((total: number, material: any) => {
+      return total + (material.quantity * material.unit_cost);
+    }, 0);
+  };
+
+  const calculateLaborCost = (labor: any[]) => {
+    return labor.reduce((total: number, laborItem: any) => {
+      if (laborItem.type === 'daily') {
+        return total + (laborItem.workers * laborItem.days * laborItem.rate);
+      } else if (laborItem.type === 'hourly') {
+        return total + (laborItem.workers * laborItem.hours * laborItem.rate);
+      } else if (laborItem.type === 'skill-based') {
+        return total + (laborItem.workers * laborItem.hours * laborItem.skill_rate);
+      }
+      return total;
+    }, 0);
+  };
+
+  const calculateTotalCost = (materials: any[], labor: any[]) => {
+    const materialCost = calculateMaterialCost(materials);
+    const laborCost = calculateLaborCost(labor);
+    return materialCost + laborCost;
   };
 
   if (loading) {
@@ -763,6 +838,194 @@ const ProjectPlanning: React.FC = () => {
                 <MenuItem value="medium">Medium</MenuItem>
                 <MenuItem value="high">High</MenuItem>
               </TextField>
+            </Grid>
+            
+            {/* Material Selection Section */}
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+                Materials & Cost Planning
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Select Material</InputLabel>
+                <Select
+                  value=""
+                  label="Select Material"
+                  onChange={(e) => {
+                    const selectedMaterial = materialOptions.find(m => m.id === e.target.value);
+                    if (selectedMaterial) {
+                      const newMaterial = {
+                        id: selectedMaterial.id,
+                        name: selectedMaterial.name,
+                        unit: selectedMaterial.unit,
+                        unit_cost: selectedMaterial.unit_cost || 0,
+                        quantity: 1
+                      };
+                      const updatedMaterials = [...selectedMaterials, newMaterial];
+                      setSelectedMaterials(updatedMaterials);
+                      
+                      // Update task form with calculated costs
+                      const materialCost = calculateMaterialCost(updatedMaterials);
+                      const laborCost = calculateLaborCost(selectedLabor);
+                      const totalCost = materialCost + laborCost;
+                      
+                      setTaskForm({
+                        ...taskForm,
+                        materials: updatedMaterials,
+                        material_cost: materialCost,
+                        total_cost: totalCost
+                      });
+                    }
+                  }}
+                >
+                  {materialOptions.map((material) => (
+                    <MenuItem key={material.id} value={material.id}>
+                      {material.name} - ₹{material.unit_cost || 0}/{material.unit}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Labor Type"
+                select
+                value=""
+                onChange={(e) => {
+                  const newLabor = {
+                    id: Date.now(),
+                    type: e.target.value,
+                    workers: 1,
+                    rate: 0,
+                    days: 0,
+                    hours: 0,
+                    skill_rate: 0
+                  };
+                  const updatedLabor = [...selectedLabor, newLabor];
+                  setSelectedLabor(updatedLabor);
+                  
+                  // Update task form with calculated costs
+                  const materialCost = calculateMaterialCost(selectedMaterials);
+                  const laborCost = calculateLaborCost(updatedLabor);
+                  const totalCost = materialCost + laborCost;
+                  
+                  setTaskForm({
+                    ...taskForm,
+                    labor: updatedLabor,
+                    labor_cost: laborCost,
+                    total_cost: totalCost
+                  });
+                }}
+              >
+                <MenuItem value="daily">Daily Rate</MenuItem>
+                <MenuItem value="hourly">Hourly Rate</MenuItem>
+                <MenuItem value="skill-based">Skill-Based Rate</MenuItem>
+              </TextField>
+            </Grid>
+            
+            {/* Selected Materials Display */}
+            {selectedMaterials.length > 0 && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>
+                  Selected Materials:
+                </Typography>
+                {selectedMaterials.map((material, index) => (
+                  <Box key={material.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="body2">
+                        {material.name} - ₹{material.unit_cost}/{material.unit}
+                      </Typography>
+                    </Box>
+                    <TextField
+                      size="small"
+                      label="Quantity"
+                      type="number"
+                      value={material.quantity}
+                      onChange={(e) => {
+                        const updatedMaterials = [...selectedMaterials];
+                        updatedMaterials[index].quantity = parseFloat(e.target.value) || 0;
+                        setSelectedMaterials(updatedMaterials);
+                        
+                        // Recalculate costs
+                        const materialCost = calculateMaterialCost(updatedMaterials);
+                        const laborCost = calculateLaborCost(selectedLabor);
+                        const totalCost = materialCost + laborCost;
+                        
+                        setTaskForm({
+                          ...taskForm,
+                          materials: updatedMaterials,
+                          material_cost: materialCost,
+                          total_cost: totalCost
+                        });
+                      }}
+                      sx={{ width: 100, mr: 1 }}
+                    />
+                    <Typography variant="body2" sx={{ mr: 1 }}>
+                      = ₹{(material.quantity * material.unit_cost).toLocaleString()}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        const updatedMaterials = selectedMaterials.filter((_, i) => i !== index);
+                        setSelectedMaterials(updatedMaterials);
+                        
+                        // Recalculate costs
+                        const materialCost = calculateMaterialCost(updatedMaterials);
+                        const laborCost = calculateLaborCost(selectedLabor);
+                        const totalCost = materialCost + laborCost;
+                        
+                        setTaskForm({
+                          ...taskForm,
+                          materials: updatedMaterials,
+                          material_cost: materialCost,
+                          total_cost: totalCost
+                        });
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Grid>
+            )}
+            
+            {/* Cost Summary */}
+            <Grid item xs={12}>
+              <Box sx={{ p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, mt: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Cost Summary
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="textSecondary">
+                      Material Cost:
+                    </Typography>
+                    <Typography variant="h6" color="primary">
+                      ₹{taskForm.material_cost.toLocaleString()}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="textSecondary">
+                      Labor Cost:
+                    </Typography>
+                    <Typography variant="h6" color="primary">
+                      ₹{taskForm.labor_cost.toLocaleString()}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="textSecondary">
+                      Total Cost:
+                    </Typography>
+                    <Typography variant="h6" color="success.main">
+                      ₹{taskForm.total_cost.toLocaleString()}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Box>
             </Grid>
           </Grid>
         </DialogContent>
