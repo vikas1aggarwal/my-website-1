@@ -470,6 +470,67 @@ const ProjectPlanning: React.FC = () => {
     return '#9e9e9e';
   };
 
+  // Cost aggregation functions
+  const getTaskCost = (task: any) => {
+    return task.total_cost || 0;
+  };
+
+  const getPhaseCost = (projectId: number, phaseId: number) => {
+    const phaseTasks = getProjectTasks(projectId).filter(task => task.phase_id === phaseId);
+    return phaseTasks.reduce((total, task) => total + getTaskCost(task), 0);
+  };
+
+  const getProjectCost = (projectId: number) => {
+    const projectTasks = getProjectTasks(projectId);
+    return projectTasks.reduce((total, task) => total + getTaskCost(task), 0);
+  };
+
+  const getCostBreakdown = (projectId: number) => {
+    const projectTasks = getProjectTasks(projectId);
+    const phaseCosts = new Map();
+    let totalMaterialCost = 0;
+    let totalLaborCost = 0;
+    let totalCost = 0;
+
+    projectTasks.forEach(task => {
+      const phaseId = task.phase_id;
+      const taskCost = getTaskCost(task);
+      const materialCost = task.material_cost || 0;
+      const laborCost = task.labor_cost || 0;
+
+      // Phase cost aggregation
+      if (!phaseCosts.has(phaseId)) {
+        phaseCosts.set(phaseId, {
+          phaseId,
+          phaseName: phases.find(p => p.id === phaseId)?.name || 'Unknown',
+          materialCost: 0,
+          laborCost: 0,
+          totalCost: 0,
+          taskCount: 0
+        });
+      }
+      
+      const phaseData = phaseCosts.get(phaseId);
+      phaseData.materialCost += materialCost;
+      phaseData.laborCost += laborCost;
+      phaseData.totalCost += taskCost;
+      phaseData.taskCount += 1;
+
+      // Project totals
+      totalMaterialCost += materialCost;
+      totalLaborCost += laborCost;
+      totalCost += taskCost;
+    });
+
+    return {
+      totalMaterialCost,
+      totalLaborCost,
+      totalCost,
+      phaseCosts: Array.from(phaseCosts.values()),
+      taskCount: projectTasks.length
+    };
+  };
+
   // Critical path calculation
   const calculateCriticalPath = (projectId: number) => {
     const projectTasks = getProjectTasks(projectId);
@@ -708,6 +769,64 @@ const ProjectPlanning: React.FC = () => {
                 ))}
               </Stepper>
             </Box>
+
+            {/* Cost Summary */}
+            {selectedProject && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Project Cost Summary
+                </Typography>
+                <Grid container spacing={2}>
+                  {(() => {
+                    const costBreakdown = getCostBreakdown(selectedProject.id);
+                    return (
+                      <>
+                        <Grid item xs={12} sm={3}>
+                          <Card sx={{ textAlign: 'center', p: 2, backgroundColor: '#e3f2fd' }}>
+                            <Typography variant="h4" color="primary" gutterBottom>
+                              ₹{costBreakdown.totalCost.toLocaleString()}
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              Total Project Cost
+                            </Typography>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <Card sx={{ textAlign: 'center', p: 2, backgroundColor: '#f3e5f5' }}>
+                            <Typography variant="h4" color="secondary" gutterBottom>
+                              ₹{costBreakdown.totalMaterialCost.toLocaleString()}
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              Material Costs
+                            </Typography>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <Card sx={{ textAlign: 'center', p: 2, backgroundColor: '#e8f5e8' }}>
+                            <Typography variant="h4" color="success.main" gutterBottom>
+                              ₹{costBreakdown.totalLaborCost.toLocaleString()}
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              Labor Costs
+                            </Typography>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <Card sx={{ textAlign: 'center', p: 2, backgroundColor: '#fff3e0' }}>
+                            <Typography variant="h4" color="warning.main" gutterBottom>
+                              {costBreakdown.taskCount}
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              Total Tasks
+                            </Typography>
+                          </Card>
+                        </Grid>
+                      </>
+                    );
+                  })()}
+                </Grid>
+              </Box>
+            )}
 
             {/* Gantt Chart Timeline */}
             {showGanttChart && (
@@ -997,11 +1116,18 @@ const ProjectPlanning: React.FC = () => {
                       <Typography variant="h6" sx={{ flexGrow: 1 }}>
                         {phase.name} ({phaseTasks.length} tasks)
                       </Typography>
-                      <Chip 
-                        label={`${totalDuration} days total`} 
-                        color="info" 
-                        size="small" 
-                      />
+                      <Box display="flex" gap={1}>
+                        <Chip 
+                          label={`₹${getPhaseCost(selectedProject.id, phase.id).toLocaleString()}`} 
+                          color="success" 
+                          size="small" 
+                        />
+                        <Chip 
+                          label={`${totalDuration} days total`} 
+                          color="info" 
+                          size="small" 
+                        />
+                      </Box>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
@@ -1038,8 +1164,23 @@ const ProjectPlanning: React.FC = () => {
                                       task.priority === 'medium' ? 'warning' : 'info'
                                     } 
                                     size="small" 
+                                    sx={{ mr: 1 }}
                                   />
+                                  {task.total_cost > 0 && (
+                                    <Chip 
+                                      label={`₹${task.total_cost.toLocaleString()}`} 
+                                      color="success" 
+                                      size="small"
+                                    />
+                                  )}
                                 </Box>
+                                {task.total_cost > 0 && (
+                                  <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
+                                    {task.material_cost > 0 && `Materials: ₹${task.material_cost.toLocaleString()}`}
+                                    {task.material_cost > 0 && task.labor_cost > 0 && ' • '}
+                                    {task.labor_cost > 0 && `Labor: ₹${task.labor_cost.toLocaleString()}`}
+                                  </Typography>
+                                )}
                               </Box>
                             }
                           />

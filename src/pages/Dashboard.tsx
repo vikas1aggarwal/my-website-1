@@ -28,6 +28,7 @@ const Dashboard: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [phase2Stats, setPhase2Stats] = useState<any>(null);
+  const [costAnalytics, setCostAnalytics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -36,10 +37,11 @@ const Dashboard: React.FC = () => {
     const fetchData = async () => {
       try {
         // Fetch Phase 1 data from Phase 2 API (since we're using the same database)
-        const [projectsResponse, materialsResponse, phase2Response] = await Promise.all([
+        const [projectsResponse, materialsResponse, phase2Response, tasksResponse] = await Promise.all([
           fetch('http://localhost:5001/api/projects').catch(() => null),
           fetch('http://localhost:5001/api/materials').catch(() => null),
-          fetch('http://localhost:5001/api/dashboard/material-intelligence').catch(() => null)
+          fetch('http://localhost:5001/api/dashboard/material-intelligence').catch(() => null),
+          fetch('http://localhost:8000/tasks').catch(() => null)
         ]);
 
         // Handle projects data
@@ -76,6 +78,25 @@ const Dashboard: React.FC = () => {
         if (phase2Response && phase2Response.ok) {
           const phase2Data = await phase2Response.json();
           setPhase2Stats(phase2Data.data || {});
+        }
+
+        // Calculate cost analytics
+        if (tasksResponse && tasksResponse.ok) {
+          const tasksData = await tasksResponse.json();
+          const tasks = tasksData || [];
+          
+          const totalProjectCost = tasks.reduce((sum: number, task: any) => sum + (task.total_cost || 0), 0);
+          const totalMaterialCost = tasks.reduce((sum: number, task: any) => sum + (task.material_cost || 0), 0);
+          const totalLaborCost = tasks.reduce((sum: number, task: any) => sum + (task.labor_cost || 0), 0);
+          const tasksWithCosts = tasks.filter((task: any) => task.total_cost > 0).length;
+          
+          setCostAnalytics({
+            totalProjectCost,
+            totalMaterialCost,
+            totalLaborCost,
+            tasksWithCosts,
+            totalTasks: tasks.length
+          });
         }
 
       } catch (err: any) {
@@ -244,6 +265,137 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Cost Analytics */}
+      {costAnalytics && (
+        <>
+          <Typography variant="h5" component="h2" gutterBottom sx={{ mt: 4, mb: 2 }}>
+            💰 Cost Analytics & Aggregation
+          </Typography>
+          
+          <Grid container spacing={3} mb={4}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card 
+                sx={{ 
+                  borderLeft: '4px solid #4caf50',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                    borderLeft: '4px solid #2e7d32'
+                  }
+                }}
+                onClick={() => navigate('/planning')}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Total Project Cost
+                      </Typography>
+                      <Typography variant="h4" component="div" color="success.main">
+                        ₹{costAnalytics.totalProjectCost.toLocaleString()}
+                      </Typography>
+                    </Box>
+                    <TrendingUpIcon sx={{ fontSize: 40, color: '#4caf50' }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Card 
+                sx={{ 
+                  borderLeft: '4px solid #9c27b0',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                    borderLeft: '4px solid #7b1fa2'
+                  }
+                }}
+                onClick={() => navigate('/materials')}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Material Costs
+                      </Typography>
+                      <Typography variant="h4" component="div" color="secondary.main">
+                        ₹{costAnalytics.totalMaterialCost.toLocaleString()}
+                      </Typography>
+                    </Box>
+                    <InventoryIcon sx={{ fontSize: 40, color: '#9c27b0' }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Card 
+                sx={{ 
+                  borderLeft: '4px solid #ff9800',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                    borderLeft: '4px solid #f57c00'
+                  }
+                }}
+                onClick={() => navigate('/planning')}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Labor Costs
+                      </Typography>
+                      <Typography variant="h4" component="div" color="warning.main">
+                        ₹{costAnalytics.totalLaborCost.toLocaleString()}
+                      </Typography>
+                    </Box>
+                    <PeopleIcon sx={{ fontSize: 40, color: '#ff9800' }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Card 
+                sx={{ 
+                  borderLeft: '4px solid #2196f3',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                    borderLeft: '4px solid #1976d2'
+                  }
+                }}
+                onClick={() => navigate('/planning')}
+              >
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Tasks with Costs
+                      </Typography>
+                      <Typography variant="h4" component="div" color="primary.main">
+                        {costAnalytics.tasksWithCosts}/{costAnalytics.totalTasks}
+                      </Typography>
+                    </Box>
+                    <AssignmentIcon sx={{ fontSize: 40, color: '#2196f3' }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </>
+      )}
 
       {/* Phase 2: Material Intelligence Integration */}
       <Typography variant="h5" component="h2" gutterBottom sx={{ mt: 4, mb: 2 }}>
@@ -511,7 +663,7 @@ const Dashboard: React.FC = () => {
                 onClick={() => handlePhase2Navigation('/material-intelligence')}
                 sx={{ justifyContent: 'space-between' }}
               >
-                Material Dashboard
+                Material Intelligence Dashboard
               </Button>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
