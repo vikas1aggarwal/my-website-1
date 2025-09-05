@@ -332,6 +332,11 @@ const ProjectPlanning: React.FC = () => {
     return Math.round((completedTasks / projectTasks.length) * 100);
   };
 
+  const getPhaseTotalDuration = (projectId: number, phaseId: number) => {
+    const phaseTasks = getPhaseTasks(projectId, phaseId);
+    return phaseTasks.reduce((total, task) => total + (task.duration_days || 0), 0);
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -494,6 +499,8 @@ const ProjectPlanning: React.FC = () => {
               const phaseTasks = getPhaseTasks(selectedProject.id, phase.id);
               if (phaseTasks.length === 0) return null;
 
+              const totalDuration = getPhaseTotalDuration(selectedProject.id, phase.id);
+
               return (
                 <Accordion key={phase.id} defaultExpanded>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -502,7 +509,7 @@ const ProjectPlanning: React.FC = () => {
                         {phase.name} ({phaseTasks.length} tasks)
                       </Typography>
                       <Chip 
-                        label={`${phase.typical_duration_days} days`} 
+                        label={`${totalDuration} days total`} 
                         color="info" 
                         size="small" 
                       />
