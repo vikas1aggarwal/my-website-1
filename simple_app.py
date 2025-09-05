@@ -858,7 +858,11 @@ async def create_task(task: dict):
             
             # Calculate finish date
             if planned_start_date:
-                start_date = datetime.strptime(planned_start_date, "%Y-%m-%d").date()
+                # Handle both string and date objects
+                if isinstance(planned_start_date, str):
+                    start_date = datetime.strptime(planned_start_date, "%Y-%m-%d").date()
+                else:
+                    start_date = planned_start_date
                 finish_date = start_date + timedelta(days=duration_days)
                 planned_finish_date = finish_date.strftime("%Y-%m-%d")
         
