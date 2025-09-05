@@ -805,6 +805,11 @@ async def get_tasks(project_id: Optional[int] = None):
                 "status": t["status"],
                 "priority": t["priority"],
                 "assigned_team_id": t["assigned_team_id"],
+                "material_cost": t.get("material_cost", 0),
+                "labor_cost": t.get("labor_cost", 0),
+                "total_cost": t.get("total_cost", 0),
+                "materials_json": t.get("materials_json"),
+                "labor_json": t.get("labor_json"),
                 "created_at": t["created_at"]
             }
             for t in tasks
