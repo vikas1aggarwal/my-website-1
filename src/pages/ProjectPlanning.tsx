@@ -422,6 +422,8 @@ const ProjectPlanning: React.FC = () => {
   // Gantt chart helper functions
   const generateTimelineData = (projectId: number) => {
     const projectTasks = getProjectTasks(projectId);
+    const criticalTasks = calculateCriticalPath(projectId);
+    
     const timeline = projectTasks.map((task, index) => {
       const startDate = task.planned_start_date ? new Date(task.planned_start_date) : new Date();
       const endDate = task.planned_finish_date ? new Date(task.planned_finish_date) : new Date(startDate.getTime() + (task.duration_days || 1) * 24 * 60 * 60 * 1000);
@@ -435,6 +437,8 @@ const ProjectPlanning: React.FC = () => {
           type: 'finish-to-start' // Default dependency type
         }));
       
+      const isCritical = criticalTasks.has(task.id);
+      
       return {
         id: task.id,
         name: task.name,
@@ -445,10 +449,11 @@ const ProjectPlanning: React.FC = () => {
         status: task.status,
         priority: task.priority,
         cost: task.total_cost || 0,
-        color: getTaskColor(task.status, task.priority),
+        color: getTaskColor(task.status, task.priority, isCritical),
         dependencies: dependencies,
         parent_task_id: task.parent_task_id,
         dependency_type: task.dependency_type || 'finish-to-start',
+        isCritical: isCritical,
       };
     });
     
@@ -456,12 +461,117 @@ const ProjectPlanning: React.FC = () => {
     return timeline;
   };
 
-  const getTaskColor = (status: string, priority: string) => {
+  const getTaskColor = (status: string, priority: string, isCritical: boolean = false) => {
+    if (isCritical) return '#d32f2f'; // Dark red for critical path
     if (status === 'completed') return '#4caf50';
     if (status === 'in_progress') return '#ff9800';
     if (priority === 'high') return '#f44336';
     if (priority === 'medium') return '#2196f3';
     return '#9e9e9e';
+  };
+
+  // Critical path calculation
+  const calculateCriticalPath = (projectId: number) => {
+    const projectTasks = getProjectTasks(projectId);
+    const taskMap = new Map(projectTasks.map(task => [task.id, task]));
+    
+    // Calculate earliest start and finish times
+    const calculateEarliestTimes = () => {
+      const earliestStart = new Map();
+      const earliestFinish = new Map();
+      const visited = new Set();
+      
+      const dfs = (taskId: number) => {
+        if (visited.has(taskId)) return;
+        visited.add(taskId);
+        
+        const task = taskMap.get(taskId);
+        if (!task) return;
+        
+        let maxPredecessorFinish = 0;
+        
+        // Find all tasks that this task depends on
+        projectTasks.forEach(t => {
+          if (t.parent_task_id === taskId) {
+            dfs(t.id);
+            const predecessorFinish = earliestFinish.get(t.id) || 0;
+            maxPredecessorFinish = Math.max(maxPredecessorFinish, predecessorFinish);
+          }
+        });
+        
+        const startTime = Math.max(maxPredecessorFinish, 0);
+        const finishTime = startTime + (task.duration_days || 1);
+        
+        earliestStart.set(taskId, startTime);
+        earliestFinish.set(taskId, finishTime);
+      };
+      
+      // Process all tasks
+      projectTasks.forEach(task => dfs(task.id));
+      
+      return { earliestStart, earliestFinish };
+    };
+    
+    // Calculate latest start and finish times
+    const calculateLatestTimes = (earliestFinish: Map<number, number>) => {
+      const latestStart = new Map();
+      const latestFinish = new Map();
+      const projectEndTime = Math.max(...Array.from(earliestFinish.values()));
+      
+      // Initialize with project end time
+      projectTasks.forEach(task => {
+        latestFinish.set(task.id, projectEndTime);
+        latestStart.set(task.id, projectEndTime - (task.duration_days || 1));
+      });
+      
+      // Backward pass
+      const visited = new Set();
+      const dfs = (taskId: number) => {
+        if (visited.has(taskId)) return;
+        visited.add(taskId);
+        
+        const task = taskMap.get(taskId);
+        if (!task) return;
+        
+        let minSuccessorStart = projectEndTime;
+        
+        // Find all tasks that depend on this task
+        projectTasks.forEach(t => {
+          if (t.parent_task_id === taskId) {
+            dfs(t.id);
+            const successorStart = latestStart.get(t.id) || projectEndTime;
+            minSuccessorStart = Math.min(minSuccessorStart, successorStart);
+          }
+        });
+        
+        if (minSuccessorStart < projectEndTime) {
+          latestFinish.set(taskId, minSuccessorStart);
+          latestStart.set(taskId, minSuccessorStart - (task.duration_days || 1));
+        }
+      };
+      
+      projectTasks.forEach(task => dfs(task.id));
+      
+      return { latestStart, latestFinish };
+    };
+    
+    const { earliestStart, earliestFinish } = calculateEarliestTimes();
+    const { latestStart, latestFinish } = calculateLatestTimes(earliestFinish);
+    
+    // Identify critical path tasks (where earliest = latest)
+    const criticalTasks = new Set<number>();
+    projectTasks.forEach(task => {
+      const es = earliestStart.get(task.id) || 0;
+      const ls = latestStart.get(task.id) || 0;
+      const ef = earliestFinish.get(task.id) || 0;
+      const lf = latestFinish.get(task.id) || 0;
+      
+      if (es === ls && ef === lf) {
+        criticalTasks.add(task.id);
+      }
+    });
+    
+    return criticalTasks;
   };
 
   if (loading) {
@@ -602,9 +712,25 @@ const ProjectPlanning: React.FC = () => {
             {/* Gantt Chart Timeline */}
             {showGanttChart && (
               <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Project Timeline (Gantt Chart)
-                </Typography>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Typography variant="h6">
+                    Project Timeline (Gantt Chart)
+                  </Typography>
+                  <Box display="flex" gap={1}>
+                    <Chip
+                      label={`Critical Path: ${timelineData.filter(t => t.isCritical).length} tasks`}
+                      color="error"
+                      variant="outlined"
+                      size="small"
+                    />
+                    <Chip
+                      label={`Total Tasks: ${timelineData.length}`}
+                      color="primary"
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Box>
+                </Box>
                 <Card variant="outlined">
                   <CardContent>
                     <Box sx={{ overflowX: 'auto' }}>
@@ -672,12 +798,33 @@ const ProjectPlanning: React.FC = () => {
                                 fontSize: '0.75rem',
                                 fontWeight: 'bold',
                                 cursor: 'pointer',
+                                border: task.isCritical ? '2px solid #ffeb3b' : 'none',
+                                boxShadow: task.isCritical ? '0 0 8px rgba(255, 235, 59, 0.6)' : 'none',
                                 '&:hover': {
                                   opacity: 0.8,
                                   transform: 'scale(1.02)'
                                 }
                               }}>
                                 {task.duration}d
+                                {task.isCritical && (
+                                  <Box sx={{
+                                    position: 'absolute',
+                                    top: -8,
+                                    right: -8,
+                                    width: 12,
+                                    height: 12,
+                                    backgroundColor: '#ffeb3b',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.6rem',
+                                    fontWeight: 'bold',
+                                    color: '#000'
+                                  }}>
+                                    !
+                                  </Box>
+                                )}
                               </Box>
                               
                               {/* Cost Label */}
@@ -756,6 +903,10 @@ const ProjectPlanning: React.FC = () => {
                             Legend:
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ width: 12, height: 12, backgroundColor: '#d32f2f', borderRadius: '50%', mr: 1, border: '2px solid #ffeb3b' }} />
+                              <Typography variant="body2">Critical Path</Typography>
+                            </Box>
                             <Box sx={{ display: 'flex', alignItems: 'center' }}>
                               <Box sx={{ width: 12, height: 12, backgroundColor: '#4caf50', borderRadius: '50%', mr: 1 }} />
                               <Typography variant="body2">Completed</Typography>
