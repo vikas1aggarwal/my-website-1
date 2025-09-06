@@ -46,6 +46,28 @@ class MaterialCostUpdate(BaseModel):
     supplier_id: int
     unit_cost: float
 
+class LaborTypeCreate(BaseModel):
+    name: str
+    category: str
+    skill_level: str
+    hourly_rate: float
+    daily_rate: float
+    job_rate: Optional[float] = None
+    unit: str
+    description: Optional[str] = None
+    applicable_phases: Optional[str] = None
+
+class LaborTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    skill_level: Optional[str] = None
+    hourly_rate: Optional[float] = None
+    daily_rate: Optional[float] = None
+    job_rate: Optional[float] = None
+    unit: Optional[str] = None
+    description: Optional[str] = None
+    applicable_phases: Optional[str] = None
+
 class MaterialIntelligenceDB:
     """Database operations for Material Intelligence system"""
     
@@ -75,6 +97,81 @@ class MaterialIntelligenceDB:
         finally:
             conn.close()
 
+    # Labor Management Methods
+    def get_labor_types(self, category: str = None, skill_level: str = None) -> List[Dict]:
+        """Get all labor types with optional filtering"""
+        query = "SELECT * FROM labor_types WHERE 1=1"
+        params = []
+        
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        
+        if skill_level:
+            query += " AND skill_level = ?"
+            params.append(skill_level)
+        
+        query += " ORDER BY category, skill_level, name"
+        return self.execute_query(query, tuple(params))
+
+    def get_labor_type(self, labor_id: int) -> Dict:
+        """Get a specific labor type by ID"""
+        query = "SELECT * FROM labor_types WHERE id = ?"
+        results = self.execute_query(query, (labor_id,))
+        return results[0] if results else None
+
+    def create_labor_type(self, labor_data: LaborTypeCreate) -> Dict:
+        """Create a new labor type"""
+        query = """
+            INSERT INTO labor_types (name, category, skill_level, hourly_rate, daily_rate, job_rate, unit, description, applicable_phases)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            labor_data.name, labor_data.category, labor_data.skill_level,
+            labor_data.hourly_rate, labor_data.daily_rate, labor_data.job_rate,
+            labor_data.unit, labor_data.description, labor_data.applicable_phases
+        )
+        self.execute_query(query, params)
+        return {"success": True, "message": "Labor type created successfully"}
+
+    def update_labor_type(self, labor_id: int, labor_data: LaborTypeUpdate) -> Dict:
+        """Update an existing labor type"""
+        # Build dynamic update query
+        update_fields = []
+        params = []
+        
+        for field, value in labor_data.dict(exclude_unset=True).items():
+            if value is not None:
+                update_fields.append(f"{field} = ?")
+                params.append(value)
+        
+        if not update_fields:
+            return {"success": False, "message": "No fields to update"}
+        
+        query = f"UPDATE labor_types SET {', '.join(update_fields)} WHERE id = ?"
+        params.append(labor_id)
+        
+        self.execute_query(query, tuple(params))
+        return {"success": True, "message": "Labor type updated successfully"}
+
+    def delete_labor_type(self, labor_id: int) -> Dict:
+        """Delete a labor type"""
+        query = "DELETE FROM labor_types WHERE id = ?"
+        self.execute_query(query, (labor_id,))
+        return {"success": True, "message": "Labor type deleted successfully"}
+
+    def get_labor_categories(self) -> List[str]:
+        """Get all unique labor categories"""
+        query = "SELECT DISTINCT category FROM labor_types ORDER BY category"
+        results = self.execute_query(query)
+        return [row['category'] for row in results]
+
+    def get_labor_skill_levels(self) -> List[str]:
+        """Get all unique skill levels"""
+        query = "SELECT DISTINCT skill_level FROM labor_types ORDER BY skill_level"
+        results = self.execute_query(query)
+        return [row['skill_level'] for row in results]
+
 # Initialize database
 db = MaterialIntelligenceDB()
 
@@ -98,13 +195,6 @@ async def health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
-
-if __name__ == "__main__":
-    print("🚀 Material Intelligence API - Phase 2")
-    print("📊 Database: realestate.db")
-    print("🚀 Starting server on port 5001...")
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5001)
 
 # ============================================================================
 # SUPPLIER MANAGEMENT APIs
@@ -363,3 +453,132 @@ async def get_material_intelligence_dashboard():
     except Exception as e:
         logger.error(f"Error getting dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# LABOR MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/api/labor-types")
+async def get_labor_types(
+    category: Optional[str] = Query(None, description="Filter by labor category"),
+    skill_level: Optional[str] = Query(None, description="Filter by skill level")
+):
+    """Get all labor types with optional filtering"""
+    try:
+        labor_types = db.get_labor_types(category, skill_level)
+        
+        return {
+            "success": True,
+            "data": labor_types,
+            "count": len(labor_types)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting labor types: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/labor-types/{labor_id}")
+async def get_labor_type(labor_id: int):
+    """Get a specific labor type by ID"""
+    try:
+        labor_type = db.get_labor_type(labor_id)
+        
+        if not labor_type:
+            raise HTTPException(status_code=404, detail="Labor type not found")
+        
+        return {
+            "success": True,
+            "data": labor_type
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting labor type: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/labor-types")
+async def create_labor_type(labor_data: LaborTypeCreate):
+    """Create a new labor type"""
+    try:
+        result = db.create_labor_type(labor_data)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error creating labor type: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/labor-types/{labor_id}")
+async def update_labor_type(labor_id: int, labor_data: LaborTypeUpdate):
+    """Update an existing labor type"""
+    try:
+        # Check if labor type exists
+        existing = db.get_labor_type(labor_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Labor type not found")
+        
+        result = db.update_labor_type(labor_id, labor_data)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating labor type: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/labor-types/{labor_id}")
+async def delete_labor_type(labor_id: int):
+    """Delete a labor type"""
+    try:
+        # Check if labor type exists
+        existing = db.get_labor_type(labor_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Labor type not found")
+        
+        result = db.delete_labor_type(labor_id)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting labor type: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/labor-categories")
+async def get_labor_categories():
+    """Get all unique labor categories"""
+    try:
+        categories = db.get_labor_categories()
+        
+        return {
+            "success": True,
+            "data": categories,
+            "count": len(categories)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting labor categories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/labor-skill-levels")
+async def get_labor_skill_levels():
+    """Get all unique skill levels"""
+    try:
+        skill_levels = db.get_labor_skill_levels()
+        
+        return {
+            "success": True,
+            "data": skill_levels,
+            "count": len(skill_levels)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting labor skill levels: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    print("🚀 Material Intelligence API - Phase 2")
+    print("📊 Database: realestate.db")
+    print("🚀 Starting server on port 5001...")
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5001)

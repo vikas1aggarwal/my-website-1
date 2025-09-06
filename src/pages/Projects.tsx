@@ -17,6 +17,7 @@ import {
   Alert,
   CircularProgress,
   Fab,
+  Link,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -26,11 +27,13 @@ import {
   Assignment as TaskIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridActionsCellItem } from '@mui/x-data-grid';
+import { useNavigate } from 'react-router-dom';
 import apiService from '../services/api';
 import { Project } from '../types';
 import ProjectPlanningModal from '../components/ProjectPlanning/ProjectPlanningModal';
 
 const Projects: React.FC = () => {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -117,6 +120,13 @@ const Projects: React.FC = () => {
     setSelectedProjectForPlanning(null);
   };
 
+  const handleProjectClick = (project: Project) => {
+    // Navigate to planning page with the selected project
+    navigate('/planning', { 
+      state: { selectedProject: project } 
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       const projectData = {
@@ -150,7 +160,34 @@ const Projects: React.FC = () => {
 
   const columns: GridColDef[] = [
     { field: 'id', headerName: 'ID', width: 70 },
-    { field: 'name', headerName: 'Project Name', width: 200 },
+    { 
+      field: 'name', 
+      headerName: 'Project Name', 
+      width: 200,
+      renderCell: (params) => (
+        <Link
+          component="button"
+          variant="body2"
+          onClick={() => handleProjectClick(params.row)}
+          sx={{
+            textDecoration: 'none',
+            color: 'primary.main',
+            fontWeight: 'medium',
+            '&:hover': {
+              textDecoration: 'underline',
+              color: 'primary.dark',
+            },
+            cursor: 'pointer',
+            textAlign: 'left',
+            border: 'none',
+            background: 'none',
+            padding: 0,
+          }}
+        >
+          {params.value}
+        </Link>
+      ),
+    },
     { field: 'description', headerName: 'Description', width: 300 },
     { field: 'city', headerName: 'City', width: 120 },
     { field: 'state', headerName: 'State', width: 120 },

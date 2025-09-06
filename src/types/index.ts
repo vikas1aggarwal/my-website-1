@@ -68,6 +68,12 @@ export interface Task {
   status: string;
   priority: string;
   assigned_team_id?: number;
+  material_cost?: number;
+  labor_cost?: number;
+  total_cost?: number;
+  materials_json?: string;
+  labor_json?: string;
+  dependency_type?: string;
   created_at: string;
   updated_at: string;
 }

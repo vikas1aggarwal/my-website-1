@@ -233,6 +233,21 @@ def init_sqlite_db():
             FOREIGN KEY (alternative_material_id) REFERENCES materials (id)
         );
         
+        -- Labor Master Data
+        CREATE TABLE labor_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            skill_level TEXT NOT NULL,
+            hourly_rate REAL NOT NULL,
+            daily_rate REAL NOT NULL,
+            job_rate REAL,
+            unit TEXT NOT NULL,
+            description TEXT,
+            applicable_phases TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
         -- Cost Estimates
         CREATE TABLE cost_estimates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -604,6 +619,50 @@ def init_sqlite_db():
         material_alternatives
     )
     
+    # Insert labor master data
+    labor_types = [
+        # Masonry & Construction
+        (1, 'Mason Junior', 'Masonry', 'Junior', 250.0, 2000.0, None, 'Person', 'Basic masonry work, brick laying, plastering', 'Site Preparation,Structure & Masonry'),
+        (2, 'Mason Senior', 'Masonry', 'Senior', 350.0, 2800.0, None, 'Person', 'Advanced masonry, complex structures, supervision', 'Site Preparation,Structure & Masonry'),
+        (3, 'Mason Specialist', 'Masonry', 'Specialist', 450.0, 3600.0, None, 'Person', 'Specialized masonry, decorative work, restoration', 'Structure & Masonry,Roofing & Finishing'),
+        
+        # Carpentry
+        (4, 'Carpenter Junior', 'Carpentry', 'Junior', 300.0, 2400.0, None, 'Person', 'Basic carpentry, formwork, simple structures', 'Structure & Masonry'),
+        (5, 'Carpenter Senior', 'Carpentry', 'Senior', 400.0, 3200.0, None, 'Person', 'Advanced carpentry, furniture, complex joinery', 'Structure & Masonry,Roofing & Finishing'),
+        (6, 'Carpenter Specialist', 'Carpentry', 'Specialist', 500.0, 4000.0, None, 'Person', 'Custom furniture, intricate woodwork, finishing', 'Roofing & Finishing'),
+        
+        # Plumbing
+        (7, 'Plumber Junior', 'Plumbing', 'Junior', 280.0, 2240.0, None, 'Person', 'Basic plumbing, pipe fitting, simple repairs', 'Structure & Masonry'),
+        (8, 'Plumber Senior', 'Plumbing', 'Senior', 380.0, 3040.0, None, 'Person', 'Complex plumbing, system installation, troubleshooting', 'Structure & Masonry,Roofing & Finishing'),
+        (9, 'Plumber Specialist', 'Plumbing', 'Specialist', 480.0, 3840.0, None, 'Person', 'Specialized systems, water treatment, advanced installations', 'Roofing & Finishing'),
+        
+        # Electrical
+        (10, 'Electrician Junior', 'Electrical', 'Junior', 320.0, 2560.0, None, 'Person', 'Basic electrical work, wiring, simple installations', 'Structure & Masonry'),
+        (11, 'Electrician Senior', 'Electrical', 'Senior', 420.0, 3360.0, None, 'Person', 'Complex electrical systems, panel work, troubleshooting', 'Structure & Masonry,Roofing & Finishing'),
+        (12, 'Electrician Specialist', 'Electrical', 'Specialist', 520.0, 4160.0, None, 'Person', 'Specialized systems, automation, advanced installations', 'Roofing & Finishing'),
+        
+        # Painting & Finishing
+        (13, 'Painter Junior', 'Painting', 'Junior', 200.0, 1600.0, None, 'Person', 'Basic painting, surface preparation, simple finishes', 'Roofing & Finishing'),
+        (14, 'Painter Senior', 'Painting', 'Senior', 300.0, 2400.0, None, 'Person', 'Advanced painting, decorative work, quality finishes', 'Roofing & Finishing'),
+        (15, 'Painter Specialist', 'Painting', 'Specialist', 400.0, 3200.0, None, 'Person', 'Specialized finishes, artistic work, premium coatings', 'Roofing & Finishing'),
+        
+        # General Labor
+        (16, 'General Laborer', 'General', 'Basic', 180.0, 1440.0, None, 'Person', 'General construction support, material handling, cleanup', 'Site Preparation,Structure & Masonry,Roofing & Finishing'),
+        (17, 'Site Supervisor', 'Supervision', 'Senior', 600.0, 4800.0, None, 'Person', 'Site supervision, quality control, coordination', 'Site Preparation,Structure & Masonry,Roofing & Finishing'),
+        (18, 'Project Manager', 'Management', 'Senior', 800.0, 6400.0, None, 'Person', 'Project management, planning, client coordination', 'Site Preparation,Structure & Masonry,Roofing & Finishing'),
+        
+        # Specialized Trades
+        (19, 'Tiler', 'Tiling', 'Skilled', 350.0, 2800.0, None, 'Person', 'Floor and wall tiling, grouting, finishing', 'Roofing & Finishing'),
+        (20, 'Welder', 'Welding', 'Skilled', 400.0, 3200.0, None, 'Person', 'Metal welding, fabrication, structural work', 'Structure & Masonry'),
+        (21, 'Crane Operator', 'Heavy Equipment', 'Skilled', 500.0, 4000.0, None, 'Person', 'Crane operation, heavy lifting, equipment handling', 'Site Preparation,Structure & Masonry'),
+        (22, 'Concrete Specialist', 'Concrete', 'Skilled', 450.0, 3600.0, None, 'Person', 'Concrete work, finishing, specialized applications', 'Site Preparation,Structure & Masonry')
+    ]
+    
+    cursor.executemany(
+        "INSERT INTO labor_types (id, name, category, skill_level, hourly_rate, daily_rate, job_rate, unit, description, applicable_phases) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        labor_types
+    )
+    
     # Insert sample project phases for the sample project
     project_phases = [
         (1, 'Site Preparation & Foundation', 1, 'Site clearing and foundation work', '2024-02-01', '2024-02-28', None, None, 'pending', 'standard', 1),
@@ -655,9 +714,10 @@ def init_sqlite_db():
     print(f"📊 Created {len(suppliers)} top Indian suppliers")
     print(f"📊 Created {len(material_costs)} material cost records")
     print(f"📊 Created {len(material_alternatives)} material alternatives")
+    print(f"📊 Created {len(labor_types)} labor types with rates")
     print(f"📊 Created {len(project_phases)} project phases (including custom)")
     print(f"📊 Created {len(phase_material_requirements)} phase material requirements")
-    print(f"💡 Features: Supplier management, cost tracking, alternatives, custom phases")
+    print(f"💡 Features: Supplier management, cost tracking, alternatives, labor management, custom phases")
 
 if __name__ == "__main__":
     init_sqlite_db()

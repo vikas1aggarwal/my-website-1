@@ -11,6 +11,7 @@ import Register from './pages/Register';
 import MaterialIntelligence from './pages/MaterialIntelligence';
 import Suppliers from './pages/Suppliers';
 import Alternatives from './pages/Alternatives';
+import LaborManagement from './pages/LaborManagement';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
                   <Route path="/material-intelligence" element={<MaterialIntelligence />} />
                   <Route path="/suppliers" element={<Suppliers />} />
                   <Route path="/alternatives" element={<Alternatives />} />
+                  <Route path="/labor" element={<LaborManagement />} />
                 </Routes>
               </Container>
             </Layout>

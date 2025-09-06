@@ -32,6 +32,7 @@ import {
   People as PeopleIcon,
   TrendingUp as TrendingUpIcon,
   Compare as CompareIcon,
+  Work as WorkIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -81,7 +82,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   ];
 
   const projectsItems = [
-    { text: 'Projects', icon: <BusinessIcon />, path: '/projects' },
+    { text: 'Projects List', icon: <BusinessIcon />, path: '/projects' },
     { text: 'Planning', icon: <TaskIcon />, path: '/planning' },
   ];
 
@@ -89,6 +90,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Material Summary', icon: <InventoryIcon />, path: '/material-intelligence' },
     { text: 'Materials', icon: <ConstructionIcon />, path: '/materials' },
     { text: 'Suppliers', icon: <PeopleIcon />, path: '/suppliers' },
+    { text: 'Labor', icon: <WorkIcon />, path: '/labor' },
     { text: 'Alternatives', icon: <CompareIcon />, path: '/alternatives' },
   ];
 

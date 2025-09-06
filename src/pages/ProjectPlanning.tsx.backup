@@ -43,7 +43,6 @@ import {
   Timeline as TimelineIcon,
   ViewTimeline as ViewTimelineIcon,
 } from '@mui/icons-material';
-import { useLocation } from 'react-router-dom';
 import apiService from '../services/api';
 import { Project, Task, Material, MaterialCategory } from '../types';
 
@@ -65,7 +64,6 @@ interface BuildingComponent {
 }
 
 const ProjectPlanning: React.FC = () => {
-  const location = useLocation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -148,12 +146,7 @@ const ProjectPlanning: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    
-    // Handle selected project from navigation
-    if (location.state?.selectedProject) {
-      setSelectedProject(location.state.selectedProject);
-    }
-  }, [location.state]);
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -292,26 +285,6 @@ const ProjectPlanning: React.FC = () => {
 
   const handleCreateTask = async () => {
     try {
-      // Validate mandatory fields
-      const validationErrors = [];
-      
-      if (!taskForm.name || taskForm.name.trim() === '') {
-        validationErrors.push('Task Name is required');
-      }
-      
-      if (!selectedProject?.id) {
-        validationErrors.push('Please select a project first');
-      }
-      
-      if (!taskForm.duration_days || taskForm.duration_days === '') {
-        validationErrors.push('Duration (days) is required');
-      }
-      
-      if (validationErrors.length > 0) {
-        setError('Please fix the following errors:\n• ' + validationErrors.join('\n• '));
-        return;
-      }
-
       const taskData = {
         ...taskForm,
         project_id: selectedProject?.id,
@@ -330,7 +303,6 @@ const ProjectPlanning: React.FC = () => {
       const newTask = await apiService.createTask(taskData);
       setTasks([...tasks, newTask]);
       setOpenTaskDialog(false);
-      setError(''); // Clear any previous errors
       
       // Reset form and selections
       setTaskForm({
@@ -353,36 +325,7 @@ const ProjectPlanning: React.FC = () => {
       setSelectedMaterials([]);
       setSelectedLabor([]);
     } catch (err: any) {
-      // Handle API errors with more specific messages
-      let errorMessage = 'Failed to create task';
-      
-      if (err.response?.status === 400) {
-        // Bad Request - usually validation errors
-        if (err.response.data?.detail) {
-          if (typeof err.response.data.detail === 'string') {
-            errorMessage = err.response.data.detail;
-          } else if (Array.isArray(err.response.data.detail)) {
-            // Handle validation error array
-            const validationErrors = err.response.data.detail.map((error: any) => {
-              if (error.loc && error.msg) {
-                const field = error.loc[error.loc.length - 1];
-                return `${field}: ${error.msg}`;
-              }
-              return error.msg || error;
-            });
-            errorMessage = 'Validation errors:\n• ' + validationErrors.join('\n• ');
-          }
-        }
-      } else if (err.response?.status === 422) {
-        // Unprocessable Entity - validation errors
-        errorMessage = 'Please check all required fields and try again';
-      } else if (err.response?.status === 500) {
-        errorMessage = 'Server error. Please try again later';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      setError(errorMessage);
+      setError(err.message || 'Failed to create task');
     }
   };
 
@@ -774,9 +717,7 @@ const ProjectPlanning: React.FC = () => {
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          <Typography variant="body2" component="div" sx={{ whiteSpace: 'pre-line' }}>
-            {error}
-          </Typography>
+          {error}
         </Alert>
       )}
 
@@ -1171,6 +1112,33 @@ const ProjectPlanning: React.FC = () => {
               </Box>
             )}
 
+            {/* Auto-Generated Plan Info */}
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <Typography variant="body2">
+                <strong>Auto-Generated Building Plan:</strong> This is a starting template based on industry best practices. 
+                You can fully customize every aspect:
+              </Typography>
+              <Grid container spacing={1} sx={{ mt: 1 }}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" component="div">
+                    <strong>Task Attributes:</strong>
+                    <br />• Name, description, duration
+                    <br />• Phase assignment, priority, status
+                    <br />• Planned vs actual dates
+                    <br />• Progress percentage, team assignment
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" component="div">
+                    <strong>Plan Customization:</strong>
+                    <br />• Edit any auto-generated task
+                    <br />• Add completely new custom tasks
+                    <br />• Delete unnecessary tasks
+                    <br />• Reorganize phases and sequences
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Alert>
 
             {/* Phase-wise Tasks */}
             <Box sx={{ mb: 2 }}>
@@ -1415,11 +1383,6 @@ const ProjectPlanning: React.FC = () => {
       <Dialog open={openTaskDialog} onClose={() => setOpenTaskDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>Add New Task</DialogTitle>
         <DialogContent>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            <Typography variant="body2">
-              <strong>Required fields:</strong> Task Name, Duration (days), and Project selection
-            </Typography>
-          </Alert>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -1463,8 +1426,6 @@ const ProjectPlanning: React.FC = () => {
                 type="number"
                 value={taskForm.duration_days}
                 onChange={(e) => setTaskForm({ ...taskForm, duration_days: e.target.value })}
-                required
-                inputProps={{ min: 1 }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1567,6 +1528,43 @@ const ProjectPlanning: React.FC = () => {
               </FormControl>
             </Grid>
             
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Labor Type"
+                select
+                value=""
+                onChange={(e) => {
+                  const newLabor = {
+                    id: Date.now(),
+                    type: e.target.value,
+                    workers: 1,
+                    rate: 0,
+                    days: 0,
+                    hours: 0,
+                    skill_rate: 0
+                  };
+                  const updatedLabor = [...selectedLabor, newLabor];
+                  setSelectedLabor(updatedLabor);
+                  
+                  // Update task form with calculated costs
+                  const materialCost = calculateMaterialCost(selectedMaterials);
+                  const laborCost = calculateLaborCost(updatedLabor);
+                  const totalCost = materialCost + laborCost;
+                  
+                  setTaskForm({
+                    ...taskForm,
+                    labor: updatedLabor,
+                    labor_cost: laborCost,
+                    total_cost: totalCost
+                  });
+                }}
+              >
+                <MenuItem value="daily">Daily Rate</MenuItem>
+                <MenuItem value="hourly">Hourly Rate</MenuItem>
+                <MenuItem value="skill-based">Skill-Based Rate</MenuItem>
+              </TextField>
+            </Grid>
             
             {/* Selected Materials Display */}
             {selectedMaterials.length > 0 && (
@@ -1637,10 +1635,10 @@ const ProjectPlanning: React.FC = () => {
             {/* Labor Selection */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Labor Type</InputLabel>
+                <InputLabel>Select Labor Type</InputLabel>
                 <Select
                   value=""
-                  label="Labor Type"
+                  label="Select Labor Type"
                   onChange={(e) => {
                     const selectedLaborType = laborOptions.find(l => l.id === e.target.value);
                     if (selectedLaborType) {
@@ -1651,7 +1649,6 @@ const ProjectPlanning: React.FC = () => {
                         skill_level: selectedLaborType.skill_level,
                         hourly_rate: selectedLaborType.hourly_rate,
                         daily_rate: selectedLaborType.daily_rate,
-                        job_rate: selectedLaborType.job_rate,
                         unit: selectedLaborType.unit,
                         count: 1,
                         billing_type: 'daily' // Default to daily
@@ -1680,6 +1677,22 @@ const ProjectPlanning: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Billing Type"
+                select
+                value=""
+                onChange={(e) => {
+                  // This will be handled in the labor selection
+                }}
+              >
+                <MenuItem value="hourly">Hourly Rate</MenuItem>
+                <MenuItem value="daily">Daily Rate</MenuItem>
+                <MenuItem value="job">Job Rate</MenuItem>
+              </TextField>
             </Grid>
             
             {/* Selected Labor Display */}

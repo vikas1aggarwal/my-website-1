@@ -805,11 +805,11 @@ async def get_tasks(project_id: Optional[int] = None):
                 "status": t["status"],
                 "priority": t["priority"],
                 "assigned_team_id": t["assigned_team_id"],
-                "material_cost": t.get("material_cost", 0),
-                "labor_cost": t.get("labor_cost", 0),
-                "total_cost": t.get("total_cost", 0),
-                "materials_json": t.get("materials_json"),
-                "labor_json": t.get("labor_json"),
+                "material_cost": t["material_cost"] if "material_cost" in t.keys() else 0,
+                "labor_cost": t["labor_cost"] if "labor_cost" in t.keys() else 0,
+                "total_cost": t["total_cost"] if "total_cost" in t.keys() else 0,
+                "materials_json": t["materials_json"] if "materials_json" in t.keys() else None,
+                "labor_json": t["labor_json"] if "labor_json" in t.keys() else None,
                 "created_at": t["created_at"]
             }
             for t in tasks
@@ -871,14 +871,21 @@ async def create_task(task: dict):
                 finish_date = start_date + timedelta(days=duration_days)
                 planned_finish_date = finish_date.strftime("%Y-%m-%d")
         
+        # Extract cost data
+        material_cost = task.get("material_cost", 0)
+        labor_cost = task.get("labor_cost", 0)
+        total_cost = task.get("total_cost", 0)
+        materials_json = task.get("materials_json")
+        labor_json = task.get("labor_json")
+        
         cursor.execute("""
             INSERT INTO tasks (project_id, parent_task_id, name, description, phase_id, 
                              component_id, duration_days, planned_start_date, planned_finish_date, 
-                             priority, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             priority, status, material_cost, labor_cost, total_cost, materials_json, labor_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (project_id, parent_task_id, name, description, phase_id, 
               component_id, duration_days, planned_start_date, planned_finish_date, 
-              priority, status))
+              priority, status, material_cost, labor_cost, total_cost, materials_json, labor_json))
         
         task_id = cursor.lastrowid
         conn.commit()
